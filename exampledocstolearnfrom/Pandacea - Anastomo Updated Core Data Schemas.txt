@@ -1,0 +1,263 @@
+# Anastomo - Updated Core Data Schemas
+
+These updated schemas incorporate the suggested improvements while maintaining compatibility with the original architecture. Each schema includes storage location, purpose, and field descriptions.
+
+## 1. User Schema
+
+**Purpose:** Represents an end-user (Data Producer) participating in the network.
+
+**Storage:** Primarily managed via Authentication Service, with profile data in a separate User Profile database (Cloud).
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| user_id | UUID | Unique identifier for the user. | Primary Key |
+| auth_provider_user_id | String | User ID from the external authentication provider (e.g., Cognito User ID). | Indexed |
+| email | String | User's email address (used for login/communication). | Unique, Indexed |
+| profile_info | JSON/Object | Basic profile info (e.g., display name, region). | Flexible structure |
+| payment_method_id | String | Identifier linking to the user's chosen payout method. | Foreign Key (to Payment System) |
+| status | Enum | User account status ('active', 'suspended', 'deleted'). | Default: 'active' |
+| created_at | Timestamp | Timestamp when the user account was created. | Auto-generated |
+| updated_at | Timestamp | Timestamp when the user account was last updated. | Auto-updated |
+| linked_device_ids | Array[UUID] | List of device IDs associated with this user. | Populated via Device registration |
+| notification_preferences | JSON/Object | User's preferences for various notification types. | NEW: For managing alert preferences |
+| schema_version | String | Version of schema used for this record. | NEW: For schema evolution management |
+
+## 2. Device Schema
+
+**Purpose:** Represents a user's registered Android device acting as an edge node.
+
+**Storage:** Cloud Registry Database (for discovery), with limited info mirrored locally.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| device_id | UUID | Unique identifier for the device. | Primary Key |
+| user_id | UUID | Identifier of the user who owns this device. | Foreign Key (to User), Indexed |
+| device_model | String | Make and model of the device (e.g., "Google Pixel 7"). | For debugging/eligibility |
+| os_version | String | Android OS version (e.g., "13"). | For debugging/eligibility |
+| anastomo_app_version | String | Version of the Anastomo app installed. | For compatibility checks |
+| status | Enum | Current status ('online', 'offline', 'unregistered'). | Updated via heartbeat/WSS connection |
+| device_trust_level | Enum | Trustworthiness assessment ('high', 'medium', 'low', 'blocked'). | NEW: For data quality/security assessment |
+| last_seen_at | Timestamp | Timestamp when the device last checked in or sent a heartbeat. | Indexed |
+| registered_at | Timestamp | Timestamp when the device was first registered. | Auto-generated |
+| consent_summary | JSON/Object | High-level summary of active consents for routing. | **Not** the full rules; updated by device |
+| performance_metrics | JSON/Object | Recent device performance data (battery, CPU, network). | NEW: For operational monitoring |
+| created_by | String | System component that registered this device. | NEW: Audit metadata |
+| updated_by | String | System component that last updated this record. | NEW: Audit metadata |
+| schema_version | String | Version of schema used for this record. | NEW: For schema evolution management |
+
+## 3. Consent Schema
+
+**Purpose:** Defines a specific data sharing permission granted by the user.
+
+**Storage:** Local Database on the Android Device (primary), with consent_summary synced to cloud.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| consent_id | UUID | Unique identifier for this specific consent rule. | Primary Key (local scope) |
+| data_source_id | String | Identifier for the specific data stream. | Indexed, References data_sources table |
+| purpose_tag | String | The specific purpose for which data can be used. | Indexed; References purpose_tags table |
+| allowed_data_tier | Enum | Maximum data tier allowed (e.g., 1, 2, 3, 4). | Tier definition managed centrally |
+| allowed_partner_tier | Enum | Maximum partner trust tier allowed (e.g., 'A', 'B', 'C'). | Tier definition managed centrally |
+| status | Enum | Current status of this consent ('active', 'revoked', 'expired'). | Default: 'active' |
+| granularity_details | JSON/Object | Finer controls (e.g., time windows {"hours": "9-17"}). | Flexible structure |
+| granted_at | Timestamp | Timestamp when consent was granted. | |
+| expires_at | Timestamp | Timestamp when consent automatically expires. | Checked during query evaluation |
+| revoked_at | Timestamp | Timestamp when consent was manually revoked. | Checked during query evaluation |
+| last_updated_at | Timestamp | Timestamp when this consent rule was last modified. | Auto-updated |
+| created_by | String | App component that created this consent. | NEW: Audit metadata |
+| schema_version | String | Version of schema used for this record. | NEW: For schema evolution management |
+
+## 4. Consent History Schema (NEW)
+
+**Purpose:** Maintains an immutable record of all consent changes for auditability.
+
+**Storage:** Local Database on the Android Device (with periodic backup to secure cloud storage).
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| history_id | UUID | Unique identifier for this history record. | Primary Key |
+| consent_id | UUID | Reference to the consent record. | Foreign Key to Consent |
+| user_id | UUID | Identifier of the user who owns this consent. | For aggregated reporting |
+| status | Enum | Status at this point ('granted', 'revoked', 'expired', 'modified'). | |
+| timestamp | Timestamp | When this consent change occurred. | Indexed |
+| version_hash | String | Hash of the complete consent settings at this point. | For integrity verification |
+| change_reason | String | Optional description of why consent changed. | For transparency |
+| change_source | Enum | How this change originated ('user', 'system', 'expiration'). | For audit purposes |
+| previous_version_hash | String | Hash of the previous version (null for first version). | For chain validation |
+| schema_version | String | Version of schema used for this record. | For schema evolution management |
+
+## 5. Query Schema
+
+**Purpose:** Represents a data request submitted by a developer/agent.
+
+**Storage:** Cloud Database (Developer Portal backend).
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| query_id | UUID | Unique identifier for the query. | Primary Key |
+| developer_id | UUID | Identifier of the developer who submitted the query. | Foreign Key (to Developer entity) |
+| purpose_tag | String | The declared purpose of the query. | Indexed, References purpose_tags table |
+| requested_data_tier | Enum | The data tier required by the query (e.g., 1, 2). | Checked against consent |
+| query_payload | JSON/Object | Specific parameters of the query. | Passed to device |
+| target_criteria | JSON/Object | Optional: Criteria for device selection. | Used by Registry for routing |
+| status | Enum | Current status ('submitted', 'routing', 'processing', 'completed', 'failed'). | Indexed |
+| submitted_at | Timestamp | Timestamp when the query was submitted. | Auto-generated |
+| completed_at | Timestamp | Timestamp when the query finished processing. | Null if pending/failed |
+| error_details | String | Details if the query failed. | Null if successful |
+| response_format | String | Expected format for query response. | NEW: Defines how data should be returned |
+| estimated_device_reach | Integer | Estimated number of devices that will receive this query. | NEW: For developer planning |
+| estimated_cost | Decimal | Estimated cost for running this query. | NEW: For developer planning |
+| created_by | String | System component or user that created this query. | NEW: Audit metadata |
+| schema_version | String | Version of schema used for this record. | NEW: For schema evolution management |
+
+## 6. Query Response Schema (NEW)
+
+**Purpose:** Standardizes the structure of data returned from queries.
+
+**Storage:** Temporarily in Cloud for delivery to developer, then cleaned up.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| response_id | UUID | Unique identifier for this response. | Primary Key |
+| query_id | UUID | Reference to the originating query. | Foreign Key to Query |
+| device_id | UUID | Device that generated this response. | Anonymized when appropriate |
+| response_payload | JSON/Object | The actual data returned by the device. | Formatted per query specs |
+| data_tier_provided | Enum | The data tier level provided in this response. | For payment calculation |
+| processing_timestamp | Timestamp | When the device processed this query. | For temporal context |
+| delivery_timestamp | Timestamp | When this response was delivered to developer. | For SLA tracking |
+| response_quality_score | Float | Optional quality assessment of the response. | For system feedback |
+| schema_version | String | Version of schema used for this record. | For schema evolution management |
+
+## 7. EarningsLog Schema
+
+**Purpose:** Records data usage resulting in earnings for the user.
+
+**Storage:** Cloud Database (Payment Processing backend). Aggregated logs from device.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| log_id | UUID | Unique identifier for the earnings record. | Primary Key |
+| earning_event_id | UUID | Identifier for this specific earning event. | NEW: For granular tracking |
+| user_id | UUID | Identifier of the user who earned. | Foreign Key (to User), Indexed |
+| device_id | UUID | Identifier of the device that processed the query. | Foreign Key (to Device), Indexed |
+| query_id | UUID | Identifier of the query that triggered the earning. | Foreign Key (to Query), Indexed |
+| developer_id | UUID | Identifier of the developer whose query triggered the earning. | Foreign Key (to Developer entity) |
+| data_source_id | String | The specific data source used. | For detailed reporting, References data_sources table |
+| data_tier_used | Enum | The data tier level provided in the response. | For payment calculation |
+| event_timestamp | Timestamp | Timestamp when the data usage event occurred on the device. | Reported by device |
+| earned_amount | Decimal | The amount earned for this specific event. | Precision important |
+| currency | String | Currency code (e.g., "USD"). | ISO 4217 code |
+| payout_status | Enum | Status of this earning ('pending', 'processing', 'paid', 'failed'). | Indexed |
+| payment_batch_id | UUID | Identifier of the payout batch this log belongs to. | NEW: For payment tracking, Null if not yet batched |
+| earnings_calculation_method | String | Reference to how this earning was calculated. | NEW: For transparency & auditability |
+| created_at | Timestamp | Timestamp when this log record was created in the cloud system. | Auto-generated |
+| schema_version | String | Version of schema used for this record. | NEW: For schema evolution management |
+
+## 8. Developer Schema (NEW)
+
+**Purpose:** Represents a developer/agent who submits queries to the network.
+
+**Storage:** Cloud Database (Developer Portal backend).
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| developer_id | UUID | Unique identifier for the developer. | Primary Key |
+| auth_provider_dev_id | String | ID from the external authentication provider. | Indexed |
+| organization_name | String | Name of the organization the developer represents. | |
+| contact_email | String | Primary contact email address. | Unique, Indexed |
+| trust_tier | Enum | Assigned trust tier ('A', 'B', 'C'). | For consent matching |
+| verification_status | Enum | Verification status ('pending', 'verified', 'rejected'). | For trust assessment |
+| api_key | String | API key for developer portal access. | Encrypted |
+| status | Enum | Account status ('active', 'suspended', 'deleted'). | Default: 'active' |
+| payment_method | JSON/Object | Payment details for query charges. | For billing |
+| created_at | Timestamp | Timestamp when the developer account was created. | Auto-generated |
+| updated_at | Timestamp | Timestamp when the developer account was last updated. | Auto-updated |
+| query_rate_limits | JSON/Object | Rate limits applied to this developer. | For system protection |
+| schema_version | String | Version of schema used for this record. | For schema evolution management |
+
+## 9. Purpose Tags Schema (NEW)
+
+**Purpose:** Standardizes the purpose tags used for consent and queries.
+
+**Storage:** Cloud Database with local cache on devices.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| purpose_id | String | Unique identifier for this purpose tag. | Primary Key |
+| display_name | String | Human-readable name shown to users. | Multi-language support |
+| description | String | Detailed description of this purpose. | For user consent decisions |
+| category | String | Broader category this purpose belongs to. | For grouping/filtering |
+| icon_reference | String | Reference to icon used in UI. | For visual representation |
+| status | Enum | Status ('active', 'deprecated', 'retired'). | For managing evolution |
+| created_at | Timestamp | When this purpose tag was created. | For versioning |
+| updated_at | Timestamp | When this purpose tag was last updated. | For versioning |
+| schema_version | String | Version of schema used for this record. | For schema evolution management |
+
+## 10. Data Sources Schema (NEW)
+
+**Purpose:** Standardizes the data sources available for queries.
+
+**Storage:** Cloud Database with local cache on devices.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| source_id | String | Unique identifier for this data source. | Primary Key |
+| display_name | String | Human-readable name shown to users. | Multi-language support |
+| description | String | Detailed description of what data this source provides. | For user consent decisions |
+| data_type | String | Type of data provided ('sensor', 'usage', 'derived'). | For categorization |
+| default_data_tier | Enum | Default tier classification for this data. | For security baseline |
+| collection_method | String | How this data is collected on device. | For transparency |
+| sample_format | JSON/Object | Example of data format for developers. | For documentation |
+| availability_conditions | JSON/Object | Requirements for this data to be available. | E.g., hardware/permissions |
+| status | Enum | Status ('active', 'deprecated', 'retired'). | For managing evolution |
+| schema_version | String | Version of schema used for this record. | For schema evolution management |
+
+## 11. Notification Schema (NEW)
+
+**Purpose:** Manages user notifications about system events.
+
+**Storage:** Cloud Database with push to device.
+
+| **Field Name** | **Data Type** | **Description** | **Constraints/Notes** |
+|----------------|---------------|-----------------|------------------------|
+| notification_id | UUID | Unique identifier for this notification. | Primary Key |
+| user_id | UUID | User this notification is for. | Foreign Key to User |
+| type | String | Type of notification ('earnings', 'consent', 'system'). | For categorization |
+| title | String | Short title/heading for the notification. | Multi-language support |
+| message | String | Full notification message. | Multi-language support |
+| data_payload | JSON/Object | Additional data for rich notifications. | App-specific format |
+| action_deep_link | String | Optional deeplink for user action. | For direct navigation |
+| created_at | Timestamp | When this notification was created. | Auto-generated |
+| delivered_at | Timestamp | When this notification was delivered to device. | For delivery tracking |
+| read_at | Timestamp | When user viewed this notification. | Null if unread |
+| expires_at | Timestamp | When this notification should expire. | For cleanup |
+| priority | Enum | Priority level ('high', 'normal', 'low'). | For delivery decisions |
+| schema_version | String | Version of schema used for this record. | For schema evolution management |
+
+---
+
+## Schema Relationships Overview
+
+```
+User 1:N Device
+User 1:N EarningsLog
+Device 1:N Consent
+Consent 1:N ConsentHistory
+Developer 1:N Query
+Query 1:N QueryResponse
+QueryResponse 1:N EarningsLog
+PurposeTags N:M Consent (via purpose_tag field)
+DataSources N:M Consent (via data_source_id field)
+User 1:N Notification
+```
+
+## Schema Versioning Strategy
+
+All schemas include a `schema_version` field to support evolution over time. When schemas need to be updated:
+
+1. Increment the schema version number
+2. Maintain backward compatibility when possible
+3. Document migration paths for breaking changes
+4. Ensure both device and cloud components can handle multiple schema versions during transition periods
+
+This versioning strategy aligns with the 20-week MVP timeline and allows for refinement based on cohort feedback in later phases.

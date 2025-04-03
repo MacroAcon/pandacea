@@ -1,0 +1,90 @@
+name: Cloud Services CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'cloud/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'cloud/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: ['auth-service', 'device-registry', 'payment-processor', 'developer-portal']
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      working-directory: cloud/${{ matrix.service }}
+      run: npm ci
+
+    - name: Run tests
+      working-directory: cloud/${{ matrix.service }}
+      run: npm test
+
+    - name: Run linting
+      working-directory: cloud/${{ matrix.service }}
+      run: npm run lint
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: ['auth-service', 'device-registry', 'payment-processor', 'developer-portal']
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      working-directory: cloud/${{ matrix.service }}
+      run: npm ci
+
+    - name: Build
+      working-directory: cloud/${{ matrix.service }}
+      run: npm run build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.service }}-build
+        path: cloud/${{ matrix.service }}/dist/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Deploy to production
+      run: |
+        # TODO: Implement deployment logic
+        # - Deploy to cloud provider
+        # - Update DNS records
+        # - Run database migrations
+        echo "Deployment would happen here"
+      env:
+        CLOUD_PROVIDER_TOKEN: ${{ secrets.CLOUD_PROVIDER_TOKEN }} 
