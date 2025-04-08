@@ -4,6 +4,7 @@ package pandacea.mcp;
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto"; // For flexible constraints
+import "google/protobuf/any.proto"; // For extensions
 
 // Defines cryptographic signature information.
 message CryptoSignature {
@@ -28,10 +29,24 @@ message RequestorIdentity {
 // Describes the purpose for which data or action is requested.
 // Aligned with concepts like GDPR's "purpose limitation".
 message PurposeDNA {
+  // Standardized categories for high-level purpose classification.
+  enum PurposeCategory {
+    PURPOSE_CATEGORY_UNSPECIFIED = 0;
+    ANALYTICS = 1;              // Data analysis, reporting, BI.
+    PERSONALIZATION = 2;        // Tailoring content or experience.
+    MARKETING = 3;              // Advertising, promotions.
+    SECURITY = 4;               // Fraud detection, threat mitigation.
+    OPERATIONS = 5;             // System maintenance, debugging, core functionality.
+    RESEARCH_DEVELOPMENT = 6; // R&D, product improvement.
+    LEGAL_COMPLIANCE = 7;       // Meeting legal or regulatory obligations.
+    THIRD_PARTY_SHARING = 8;    // Explicit sharing with specified third parties.
+    FUNCTIONALITY = 9;          // Essential for providing the requested service/feature.
+  }
+
   // A unique identifier for this specific purpose instance, potentially linkable to a registry.
   string purpose_id = 1;
-  // High-level category of the purpose (e.g., "Analytics", "Personalization", "Security", "Operations").
-  string primary_purpose_category = 2;
+  // High-level category of the purpose.
+  PurposeCategory primary_purpose_category = 2; // Changed from string
   // Detailed, human-readable description of the specific purpose. Should be clear and unambiguous.
   string specific_purpose_description = 3;
   // List of data types or categories involved (e.g., "user.email", "device.location.coarse", "sensor.temperature"). Standardized vocabulary is encouraged.
@@ -46,6 +61,16 @@ message PurposeDNA {
   google.protobuf.Timestamp purpose_expiry_timestamp = 8;
   // Link to a more detailed privacy policy or legal justification, if applicable.
   string legal_context_url = 9;
+
+  // --- Data Lineage Tracking ---
+  // Optional: ID of the request that originated the data being processed under this purpose.
+  string origin_request_id = 10;
+  // Optional: Description of transformations applied to the data since its origin.
+  string transformation_description = 11;
+
+  // --- Agent Metadata ---
+  // Optional: Flexible key-value store for agent-specific metadata related to this purpose.
+  google.protobuf.Struct agent_metadata = 12;
 }
 
 // Specifies a single permission being requested (a data access or an action).
@@ -80,13 +105,15 @@ message MCPRequest {
   repeated PermissionSpecification permissions = 5;
   // Optional: Timestamp after which this specific request message is no longer valid.
   google.protobuf.Timestamp request_expiry = 6;
-  // Cryptographic signature covering the core fields of the request (e.g., fields 1-6)
+  // Cryptographic signature covering the core fields of the request (e.g., fields 1-6, 8-10)
   // calculated by the requestor using their private key.
-  CryptoSignature signature = 7;
-  // Version of the MCP schema this request adheres to (e.g., "1.0.0").
+  CryptoSignature signature = 7; // Note: Signature calculation must exclude the signature field itself and potentially extensions.
+  // Version of the MCP schema this request adheres to (e.g., "1.0.0"). Expected format: Semantic Versioning (Major.Minor.Patch).
   string mcp_version = 8;
   // Optional: ID of a previous request this one relates to (e.g., for updates or renewals).
   string related_request_id = 9;
+  // Optional: Field for future protocol extensions.
+  repeated google.protobuf.Any extensions = 10;
 }
 
 // The main response message following the Model Context Protocol.
@@ -127,10 +154,13 @@ message MCPResponse {
   // Could be a signed hash of key decision elements.
   bytes consent_receipt = 8;
 
-  // Cryptographic signature covering the core fields of the response (e.g., fields 1-8)
+  // Cryptographic signature covering the core fields of the response (e.g., fields 1-8, 10)
   // calculated by the responder (Consent Manager) using its private key.
-  CryptoSignature signature = 9;
+  CryptoSignature signature = 9; // Note: Signature calculation must exclude the signature field itself and potentially extensions.
 
-  // Version of the MCP schema this response adheres to (e.g., "1.0.0").
+  // Version of the MCP schema this response adheres to (e.g., "1.0.0"). Expected format: Semantic Versioning (Major.Minor.Patch).
   string mcp_version = 10;
+
+  // Optional: Field for future protocol extensions.
+  repeated google.protobuf.Any extensions = 11;
 } 
