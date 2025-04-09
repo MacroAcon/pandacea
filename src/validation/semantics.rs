@@ -2,7 +2,7 @@
 
 use crate::error::{Result, MCPError};
 use crate::types::{
-    McpRequest, PurposeDna, PermissionSpecification, RequestorIdentity,
+    McpRequest, PurposeDna, PermissionSpecification,
     purpose_dna::PurposeCategory,
     permission_specification::Action
 };

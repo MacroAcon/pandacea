@@ -1,4 +1,4 @@
-use crate::error::{Result, MCPError};
+use crate::error::{Result};
 use crate::types::McpRequest;
 use crate::crypto::verify_request_signature;
 

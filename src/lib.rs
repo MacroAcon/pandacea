@@ -31,7 +31,8 @@ pub mod validation;
 
 // Publicly re-export everything from the modules for easy access
 pub use types::*; // Re-exports proto types like McpRequest, McpResponse, enums
-pub use error::*; // MCPError enum and Result alias
+pub use error::MCPError; // Re-export only the specific error type
+pub use error::Result;  // Re-export the Result alias
 pub use validation::validate_request; // Only expose the main entry point
 // If sub-functions like validate_request_syntax are needed publicly, re-export them too:
 // pub use validation::syntax::validate_request_syntax;
@@ -61,3 +62,11 @@ mod test_utils;
 
 // Optional: Add top-level examples here if desired, 
 // but they might be better placed in README.md or specific module docs.
+
+// Re-export key types for easier use by consumers of the crate
+pub use types::{McpRequest, McpResponse, PurposeDna, PermissionSpecification, permission_specification::Action, Status, CryptoSignature, RequestorIdentity};
+// Remove unused error re-export
+// pub use error::*; // MCPError enum and Result alias
+// Potentially re-export other modules or key functions
+// pub use crypto::KeyPair;
+// pub use validation::validate_request;

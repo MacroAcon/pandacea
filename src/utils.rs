@@ -5,7 +5,7 @@ use crate::types::{McpRequest, PurposeDna}; // Import types used in functions
 use chrono::{DateTime, Utc};
 use prost_types::{Timestamp, Struct, Value as ProstValue, value::Kind as ProstKind, ListValue};
 use serde_json::{Value as SerdeValue, Map as SerdeMap};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 // --- Timestamp Conversions ---
 
@@ -61,7 +61,7 @@ pub fn hashmap_to_prost_struct(map: HashMap<String, SerdeValue>) -> Result<Optio
     } else {
         let fields = map.into_iter()
             .map(|(k, v)| serde_value_to_prost_value(v).map(|pv| (k, pv)))
-            .collect::<Result<HashMap<String, ProstValue>>>()?; // Collect into Result<HashMap>
+            .collect::<Result<BTreeMap<String, ProstValue>>>()?; // Collect into Result<BTreeMap>
         Ok(Some(Struct { fields }))
     }
 }
@@ -78,6 +78,23 @@ pub fn prost_struct_to_hashmap(p_struct: Option<&Struct>) -> Result<HashMap<Stri
         }
         None => Ok(HashMap::new()),
     }
+}
+
+/// Converts a `serde_json::Map<String, serde_json::Value>` to a `prost_types::Struct`.
+/// Handles nested structures recursively.
+pub fn json_map_to_prost_struct(map: SerdeMap<String, SerdeValue>) -> Result<Struct> {
+    let mut fields = BTreeMap::new(); // Use BTreeMap
+    for (key, value) in map {
+        fields.insert(key, serde_value_to_prost_value(value)?);
+    }
+    Ok(Struct { fields }) // Now matches Struct definition
+}
+
+// Helper to convert Prost Struct to Serde Map
+fn prost_struct_to_serde_object(prost_struct: Struct) -> Result<SerdeMap<String, SerdeValue>> {
+    prost_struct.fields.into_iter()
+        .map(|(k, v)| prost_value_to_serde_value(v).map(|sv| (k, sv)))
+        .collect::<Result<SerdeMap<String, SerdeValue>>>()
 }
 
 // --- Value Conversion Helpers (serde_json::Value <-> prost_types::Value) ---
@@ -106,7 +123,7 @@ pub fn serde_value_to_prost_value(value: SerdeValue) -> Result<ProstValue> {
             // Convert the inner map<String, SerdeValue> to map<String, ProstValue>
             let fields = map.into_iter()
                 .map(|(k, v)| serde_value_to_prost_value(v).map(|pv| (k, pv)))
-                .collect::<Result<HashMap<String, ProstValue>>>()?; 
+                .collect::<Result<BTreeMap<String, ProstValue>>>()?; // Collect into BTreeMap
             ProstKind::StructValue(Struct { fields })
         }
     };
@@ -132,12 +149,7 @@ pub fn prost_value_to_serde_value(value: ProstValue) -> Result<SerdeValue> {
         }
         ProstKind::StringValue(s) => Ok(SerdeValue::String(s)),
         ProstKind::BoolValue(b) => Ok(SerdeValue::Bool(b)),
-        ProstKind::StructValue(s) => {
-            let map = s.fields.into_iter()
-                .map(|(k, v)| prost_value_to_serde_value(v).map(|sv| (k, sv)))
-                .collect::<Result<SerdeMap<String, SerdeValue>>>()?;
-            Ok(SerdeValue::Object(map))
-        }
+        ProstKind::StructValue(prost_struct) => prost_struct_to_serde_object(prost_struct).map(SerdeValue::Object),
         ProstKind::ListValue(l) => {
             let vec = l.values.into_iter()
                 .map(prost_value_to_serde_value)

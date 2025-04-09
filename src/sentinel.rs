@@ -1,13 +1,19 @@
-use crate::error::{Result, MCPError};
-use crate::types::{McpRequest, McpResponse, PurposeDna, RequestorIdentity};
-// Import the specific function from the semantics module
+//! The Sentinel Agent: Core logic for processing MCP requests and enforcing consent.
+
+use crate::mcp::McpRequest;
+// Remove unused McpResponse, PurposeDna, RequestorIdentity (commented out usage)
+// use crate::types::{McpResponse, PurposeDna, RequestorIdentity};
+use crate::types::McpResponse; // Needed for record_consent_decision signature
+use crate::error::{Result}; // Remove unused MCPError
+use crate::types::purpose_dna::PurposeCategory;
+// use crate::validation; // Remove unused validation import
 use crate::validation::semantics::validate_request_semantics;
-// If RequestContext is needed and defined in validation::semantics or validation::mod
-// use crate::validation::RequestContext; // Assuming it's publicly exported
-use chrono::{DateTime, Utc, Duration, Timelike}; // Added Timelike for hour()
-use std::collections::{HashMap, VecDeque};
-use std::convert::TryFrom; // For converting i32 to PurposeCategory
-use crate::types::purpose_dna::PurposeCategory; // Import PurposeCategory
+// Already commented out: consent_storage, audit
+// Remove unused Arc, Mutex (commented out usage)
+// use std::sync::{Arc, Mutex};
+// use std::sync::{Arc, Mutex}; // Remove unused Arc, Mutex imports
+use std::collections::{HashMap, VecDeque, HashSet};
+use chrono::{DateTime, Utc, Duration as ChronoDuration, Timelike};
 
 /// Configuration for the Sentinel Agent's behavior
 #[derive(Clone, Debug)]
@@ -81,8 +87,9 @@ pub struct SentinelAgent {
     config: SentinelConfig,
     /// Tracking of recent requests per requestor (requestor_id -> deque of requests)
     request_history: HashMap<String, VecDeque<McpRequest>>,
-    // Note: Storing full requests can consume memory. Consider storing summaries or timestamps.
-    // security_alerts: Vec<SecurityAlert>, // Storing alerts internally might lead to unbounded growth. Better to return them.
+    // Comment out unused fields
+    // consent_storage: Arc<Mutex<dyn ConsentStorage + Send + Sync>>,
+    // audit_twin: Arc<Mutex<dyn AuditTwin + Send + Sync>>,
 }
 
 impl SentinelAgent {
@@ -96,7 +103,8 @@ impl SentinelAgent {
         Self {
             config,
             request_history: HashMap::new(),
-            // security_alerts: Vec::new(),
+            // consent_storage: Arc::new(Mutex::new(ConsentStorage::new())),
+            // audit_twin: Arc::new(Mutex::new(AuditTwin::new())),
         }
     }
 
@@ -107,11 +115,9 @@ impl SentinelAgent {
         let mut alerts = Vec::new();
         let requestor_id_opt = request.requestor_identity.as_ref().map(|id| id.pseudonym_id.clone());
 
-        // 1. Semantic Validation (Re-check or assume pre-validated)
-        // Here, we call it again to potentially generate specific Sentinel alerts.
+        // 1. Semantic Validation
         self.check_semantic_consistency(request, requestor_id_opt.as_deref(), &mut alerts);
 
-        // If requestor ID is present, perform history-based analysis
         if let Some(ref requestor_id) = requestor_id_opt {
             // 2. Request Frequency Analysis
             self.analyze_request_frequency(request, requestor_id, &mut alerts);
@@ -145,7 +151,6 @@ impl SentinelAgent {
                 requestor_id: requestor_id.map(String::from),
                 details: format!("Semantic validation failed: {}", e),
             });
-            // Note: We don't return Err here, just log the alert. The main validation flow handles blocking.
         }
     }
 
@@ -156,22 +161,18 @@ impl SentinelAgent {
         requestor_id: &str,
         alerts: &mut Vec<SecurityAlert>
     ) {
-        // Check if request history exists for this requestor
         if let Some(history) = self.request_history.get(requestor_id) {
-            // Count requests in the last hour
             let now = Utc::now();
-            let one_hour_ago = now - Duration::hours(1);
+            let one_hour_ago = now - ChronoDuration::hours(1);
 
             let requests_in_last_hour = history.iter()
                 .filter(|req| {
                     req.timestamp.as_ref()
-                        // Use chrono directly for conversion if utils not available/preferred
                         .and_then(|ts| DateTime::from_timestamp(ts.seconds, ts.nanos as u32))
                         .map_or(false, |req_time| req_time >= one_hour_ago)
                 })
                 .count();
 
-            // Check if request frequency exceeds threshold (+1 for the current request)
             let current_count = requests_in_last_hour + 1;
             if current_count as u32 > self.config.max_requests_per_hour {
                 alerts.push(SecurityAlert {
@@ -196,12 +197,11 @@ impl SentinelAgent {
         requestor_id: &str,
         alerts: &mut Vec<SecurityAlert>
     ) {
-        // Example: Alert if a new purpose category is used for the first time by this requestor.
         if let Some(purpose) = &request.purpose_dna {
-             match PurposeCategory::try_from(purpose.primary_purpose_category) {
-                 Ok(current_category) if current_category != PurposeCategory::Unspecified => {
+            // Use try_from().ok() to get an Option<PurposeCategory>
+            if let Some(current_category) = PurposeCategory::try_from(purpose.primary_purpose_category).ok() {
+                if current_category != PurposeCategory::Unspecified { // Check category after getting Some
                     let historical_purposes = self.get_historical_purpose_categories(requestor_id);
-                    // Check if this category is new and if the history is not empty (avoid alert on first ever request)
                     if !historical_purposes.is_empty() && !historical_purposes.contains(&current_category) {
                         alerts.push(SecurityAlert {
                             timestamp: Utc::now(),
@@ -215,9 +215,8 @@ impl SentinelAgent {
                             ),
                         });
                     }
-                 },
-                 _ => {} // Ignore unspecified or invalid categories here
-             }
+                }
+            }
         }
     }
 
@@ -228,12 +227,9 @@ impl SentinelAgent {
         requestor_id: &str,
         alerts: &mut Vec<SecurityAlert>
     ) {
-        // Example: Check for access outside of typical business hours (e.g., 6 AM - 10 PM UTC)
-        if let Some(timestamp) = &request.timestamp {
-            // Use chrono directly
+        if let Some(timestamp) = &request.timestamp { // Use request.timestamp directly (assume it exists)
             if let Some(req_time) = DateTime::from_timestamp(timestamp.seconds, timestamp.nanos as u32) {
-                let hour = req_time.hour(); // Use Timelike trait
-
+                let hour = req_time.hour(); 
                 // Example thresholds (adjust as needed)
                 let typical_start_hour = 6;
                 let typical_end_hour = 22;
@@ -274,6 +270,7 @@ impl SentinelAgent {
             .map(|history| {
                 history.iter()
                     .filter_map(|req| req.purpose_dna.as_ref())
+                    // Use try_from().ok() which returns Option<PurposeCategory>
                     .filter_map(|purpose| PurposeCategory::try_from(purpose.primary_purpose_category).ok())
                     .filter(|cat| *cat != PurposeCategory::Unspecified)
                     .collect::<HashSet<PurposeCategory>>()
@@ -284,6 +281,40 @@ impl SentinelAgent {
      /// Get a snapshot of the current request history (for debugging/testing).
     pub fn get_request_history(&self) -> &HashMap<String, VecDeque<McpRequest>> {
         &self.request_history
+    }
+
+    // Example internal logic: Check against historical consent patterns
+    fn check_historical_patterns(&self, request: &McpRequest) -> Result<()> {
+        let requestor_id = request.requestor_identity.as_ref()
+            .map(|id| id.pseudonym_id.as_str())
+            .unwrap_or("unknown_requestor");
+
+        let historical_categories = self.get_historical_purpose_categories(requestor_id);
+
+        if let Some(purpose) = &request.purpose_dna {
+            // Use try_from().ok()
+            if let Some(current_category) = PurposeCategory::try_from(purpose.primary_purpose_category).ok() {
+                if historical_categories.contains(&current_category) {
+                    // Potentially allow based on history (or flag for review)
+                } else {
+                    // ... rest of file ...
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Placeholder: Record consent decision
+    fn record_consent_decision(&self, request_id: &str, granted: bool, response: Option<&McpResponse>) {
+        // TODO: Implement interaction with ConsentStorage and AuditTwin (commented out)
+        println!(
+            "Placeholder: Recording consent decision for request {}: Granted = {}. Response: {:?}",
+            request_id,
+            granted,
+            response.map(|r| r.status)
+        );
+        // self.storage.store_consent(...);
+        // self.audit_twin.log_decision(...);
     }
 }
 
@@ -296,7 +327,6 @@ mod tests {
     use crate::types::{permission_specification::Action, McpRequest, Signature }; // Specify Action directly
     use prost_types::{Timestamp as ProstTimestamp, Struct as ProstStruct};
     use std::thread; // For simulating time passing
-    use std::time::Duration as StdDuration;
     use chrono::TimeZone; // For creating specific DateTime
 
     // Helper specifically for sentinel tests, allowing timestamp control
@@ -395,7 +425,7 @@ mod tests {
         let requestor_id = "freq_user_time";
 
         // Simulate threshold requests just over an hour ago
-        let hour_ago = Utc::now() - Duration::minutes(61);
+        let hour_ago = Utc::now() - ChronoDuration::hours(1);
         let hour_ago_ts = ProstTimestamp { seconds: hour_ago.timestamp(), nanos: 0 };
         for _ in 0..threshold {
              let req = create_sentinel_test_request(&key_pair, PurposeCategory::Analytics, requestor_id, hour_ago_ts, "data", Action::Read);

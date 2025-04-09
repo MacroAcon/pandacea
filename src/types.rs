@@ -26,13 +26,19 @@ pub use crate::mcp::PermissionSpecification;
 /// Contains cryptographic signature information (key ID, algorithm, signature bytes).
 pub use crate::mcp::CryptoSignature;
 
-// --- Re-exports of Enums ---
+// --- Re-exports of Enums via submodules ---
 
-/// Enumerates the possible actions that can be requested on a resource.
-pub use crate::mcp::permission_specification::Action;
+/// Re-exports from purpose_dna module
+pub mod purpose_dna {
+    /// Enumerates the possible categories describing the primary purpose of a request.
+    pub use crate::mcp::purpose_dna::PurposeCategory;
+}
 
-/// Enumerates the possible categories describing the primary purpose of a request.
-pub use crate::mcp::purpose_dna::PurposeCategory;
+/// Re-exports from permission_specification module
+pub mod permission_specification {
+    /// Enumerates the possible actions that can be requested on a resource.
+    pub use crate::mcp::permission_specification::Action;
+}
 
 /// Enumerates the possible overall statuses of processing an `McpRequest`.
 pub use crate::mcp::mcp_response::Status;

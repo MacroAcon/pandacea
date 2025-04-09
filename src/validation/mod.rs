@@ -26,7 +26,6 @@ pub fn validate_request(request: &McpRequest) -> Result<()> {
     syntax::validate_request_syntax(request).map_err(|e| {
         MCPError::ValidationError {
             stage: "Syntax".to_string(),
-            message: e.to_string(), // Capture inner error message
             source: Box::new(e),
         }
     })?;
@@ -35,7 +34,6 @@ pub fn validate_request(request: &McpRequest) -> Result<()> {
     semantics::validate_request_semantics(request).map_err(|e| {
         MCPError::ValidationError {
             stage: "Semantics".to_string(),
-            message: e.to_string(),
             source: Box::new(e),
         }
     })?;
@@ -44,7 +42,6 @@ pub fn validate_request(request: &McpRequest) -> Result<()> {
     security::validate_request_security(request).map_err(|e| {
         MCPError::ValidationError {
             stage: "Security".to_string(),
-            message: e.to_string(),
             source: Box::new(e),
         }
     })?;

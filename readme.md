@@ -1,4 +1,63 @@
-# Pandacea
+# Pandacea Project
+
+## Project Structure
+
+The project is organized into the following components:
+
+- **backend/**: Core Rust implementation of the Pandacea Model Context Protocol
+  - Contains the main Rust codebase with implementation details
+  - Includes Cargo configuration files for Rust dependencies
+
+- **frontend/**: UI components for Pandacea
+  - React-based user interface
+  - TypeScript implementation for type safety
+
+- **sdk/**: Developer kit for integrating with Pandacea
+  - TypeScript SDK for easy integration with Pandacea services
+  - Provides client libraries for API communication
+
+- **proto/**: Protocol definition files
+  - Contains protobuf definitions for the MCP protocol
+  - Source of truth for API contracts
+
+- **docs/**: Project documentation
+  - Architecture diagrams
+  - Design specifications
+  - Usage guides
+
+## Getting Started
+
+### Backend Development
+
+```
+cd backend
+cargo build
+cargo test
+```
+
+### Frontend Development
+
+```
+cd frontend
+npm install
+npm start
+```
+
+### SDK Development
+
+```
+cd sdk
+npm install
+npm run build
+```
+
+## Contributing
+
+Please see the [contributing guide](docs/contributing.md) for details on how to contribute to the project.
+
+## License
+
+This project is licensed under the terms specified in [license.md](docs/license.md).
 
 ## An Open Framework for Consent-Driven Data Ecosystems
 
@@ -8,13 +67,25 @@ For a comprehensive overview of Pandacea's vision, architecture, and technical s
 
 ## Vision
 
-Modern data systems are optimized for extraction, not consent. Platforms routinely harvest personal information under vague policies and buried agreements, prioritizing monetization over meaningful user control. Meanwhile, the rise of AI is dramatically increasing demand for high-volume, highly-specific data.
+As agentic AI systems and humanoid robotics scale, entire industries are already entering hiring freezes, and soon, job reductions. Within the next 3 to 5 years, we face a critical economic transition. When machines can do nearly everything humans can, what is left for people to contribute?
 
-Without intervention, this trend will deepen, and people will lose agency as machines gain it.
+Pandacea exists to answer that question. We believe the future of human value lies in consented, compensated data contribution.
 
-Pandacea exists to confront this growing imbalance. It replaces opaque surveillance and one-sided APIs with transparent, purposeful exchange, enforced locally by user-controlled consent mechanisms. The architecture shifts from centralized collection to edge-native sovereignty, and from static permissions to adaptive, context-aware consent.
+Billions, and eventually trillions, of agent-to-agent transactions will power our global systems. Behind each valuable dataset is a person — someone whose preferences, behaviors, creations, or environment shaped the inputs that made AI smarter. Their participation should earn them a stake in the AI economy.
 
-**Pandacea is not a product. It is not a platform. It is a foundation—for anyone who believes the future of data should serve people, not exploit them.**
+We envision a world where:
+
+Your personal agent negotiates with AI systems on your behalf
+
+You get paid for sharing valuable, use-ready data, whether passively or through innovative tools you build
+
+New job titles like “Data Provider” and “Loop Creator” become real paths to income
+
+Young people, raised as native AI builders, learn to generate useful data through custom agents and apps — and are rewarded from the start
+
+This is how we survive the transition, not by resisting AI, but by ensuring that the value it creates flows back to the people who power it.
+
+Pandacea is building the infrastructure to make that possible. We’re not just optimizing computation. We’re reimagining compensation.
 
 ## Core Architecture
 

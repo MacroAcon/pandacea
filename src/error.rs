@@ -1,8 +1,9 @@
 //! Error types for the MCP library.
 
 use chrono::{DateTime, Utc};
-use ring::error::Unspecified as RingUnspecified;
 use thiserror::Error;
+use signature::Error as SignatureLibError;
+use pkcs8::Error as Pkcs8Error;
 
 /// Errors that can occur during MCP processing, serialization, validation, or cryptography.
 #[derive(Error, Debug)] // Added Debug
@@ -40,21 +41,18 @@ pub enum MCPError {
     /// The MCP protocol version is not supported.
     #[error("Unsupported MCP version: {version}")]
     UnsupportedVersion { version: String },
-    /// Cryptographic signature verification failed.
-    #[error("Signature verification failed: {reason}")]
-    SignatureError { reason: String },
+    /// Cryptographic signature verification failed or a signing error occurred.
+    #[error("Signature error: {reason}")]
+    SignatureError { reason: String, #[source] source: Option<SignatureLibError> },
     /// The specified cryptographic key could not be found or retrieved.
     #[error("Key not found: {key_id}")]
     KeyNotFound { key_id: String },
-    /// An invalid cryptographic key was provided or generated.
-    #[error("Invalid cryptographic key: {reason} - {source}")] // Show source
-    InvalidKey { 
-        #[source] source: ring::error::KeyRejected,
-        reason: String // Add context here
-    },
-    /// An unspecified error occurred within the underlying crypto library (`ring`).
-    #[error("Unspecified cryptographic error: {source}")]
-    CryptoUnspecified { #[from] source: RingUnspecified },
+    /// An invalid cryptographic key was provided (parsing error, wrong format, etc.).
+    #[error("Invalid cryptographic key: {reason}")]
+    InvalidKey { reason: String, #[source] source: Option<Box<dyn std::error::Error + Send + Sync + 'static>> },
+    /// Error related to PKCS#8 encoding/decoding.
+    #[error("PKCS#8 processing error: {context} - {source}")]
+    Pkcs8Error { context: String, #[source] source: Pkcs8Error },
     /// An error occurred during constraint evaluation.
     #[error("Constraint evaluation failed for '{constraint_key}': {reason}")]
     ConstraintEvaluationError { constraint_key: String, reason: String },
@@ -95,18 +93,24 @@ impl From<prost::DecodeError> for MCPError {
     }
 }
 
-implement From<serde_json::Error> for MCPError {
+impl From<serde_json::Error> for MCPError {
     fn from(err: serde_json::Error) -> Self {
         MCPError::JsonError { context: "Struct/Value conversion".to_string(), source: err }
     }
 }
 
-implement From<std::io::Error> for MCPError {
+impl From<std::io::Error> for MCPError {
     fn from(err: std::io::Error) -> Self {
         MCPError::IoError { context: "File operation".to_string(), source: err } // Example context
     }
 }
 
+// Add From for Pkcs8Error
+impl From<Pkcs8Error> for MCPError {
+    fn from(err: Pkcs8Error) -> Self {
+        MCPError::Pkcs8Error { context: "PKCS#8 operation".to_string(), source: err }
+    }
+}
 
 // --- Helper constructors for common errors ---
 // Add simple constructors for the most common error types
@@ -128,15 +132,31 @@ impl MCPError {
         MCPError::ExpiredPurpose { expiry_time }
     }
 
-    pub fn signature_error(reason: impl Into<String>) -> Self {
-        MCPError::SignatureError { reason: reason.into() }
+    pub fn signature_error(reason: impl Into<String>, source: Option<SignatureLibError>) -> Self {
+        MCPError::SignatureError { reason: reason.into(), source }
     }
 
-     pub fn invalid_key(source: ring::error::KeyRejected, reason: impl Into<String>) -> Self {
-        MCPError::InvalidKey { source, reason: reason.into() }
+    pub fn invalid_key(reason: impl Into<String>, source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>) -> Self {
+        MCPError::InvalidKey { reason: reason.into(), source }
+    }
+    
+    pub fn pkcs8_error(context: impl Into<String>, source: Pkcs8Error) -> Self {
+        MCPError::Pkcs8Error { context: context.into(), source }
     }
     
     pub fn conversion_error(message: impl Into<String>) -> Self {
         MCPError::ConversionError { message: message.into() }
+    }
+    
+    pub fn internal(message: impl Into<String>) -> Self {
+        MCPError::ConversionError { message: message.into() }
+    }
+    
+    pub fn constraint_violation(constraint_key: impl Into<String>, reason: impl Into<String>) -> Self {
+        MCPError::ConstraintEvaluationError { constraint_key: constraint_key.into(), reason: reason.into() }
+    }
+    
+    pub fn expired_purpose_without_timestamp() -> Self {
+        MCPError::ConversionError { message: "Purpose is marked as expired but no expiry timestamp provided".into() }
     }
 } 
