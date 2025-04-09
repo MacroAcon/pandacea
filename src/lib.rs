@@ -19,20 +19,31 @@ pub mod mcp {
 // Declare the modules
 mod types;
 mod error;
-mod validation;
+// mod validation; // Remove old top-level module declaration
 mod crypto;
 mod builders;
 mod serialization;
 mod utils;
+mod sentinel; // Declare the new sentinel module
+
+// Declare the new validation *directory* as a module
+pub mod validation;
 
 // Publicly re-export everything from the modules for easy access
 pub use types::*; // Re-exports proto types like McpRequest, McpResponse, enums
 pub use error::*; // MCPError enum and Result alias
-pub use validation::*; // validate_request, validate_request_syntax, etc.
+pub use validation::validate_request; // Only expose the main entry point
+// If sub-functions like validate_request_syntax are needed publicly, re-export them too:
+// pub use validation::syntax::validate_request_syntax;
 pub use crypto::*; // KeyPair, sign_request, verify_request_signature, etc.
 pub use builders::*; // McpRequestBuilder, McpResponseBuilder
 pub use serialization::*; // serialize_request, deserialize_request, etc.
 pub use utils::*; // Timestamp/Struct conversions, expiration checks
+pub use sentinel::{SentinelAgent, SentinelConfig, SecurityAlert, AlertType, SensitivityLevel}; // Re-export Sentinel components
+
+// Add module declaration for test_utils (only compiled in test builds)
+#[cfg(test)]
+mod test_utils;
 
 // --- Remove code that was moved to other modules --- 
 // - All `pub use mcp::...` re-exports (moved to types.rs)
