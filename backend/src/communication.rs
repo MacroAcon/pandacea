@@ -69,8 +69,8 @@ impl Default for MessageRouterConfig {
     fn default() -> Self {
         Self {
             local_address: "127.0.0.1:8080".to_string(),
-            cert_path: "certs/cert.pem".to_string(),
-            key_path: "certs/key.pem".to_string(),
+            cert_path: "certs/public/pandacea.crt".to_string(),
+            key_path: "certs/private/pandacea.pfx".to_string(),
             connection_timeout: 30,
             message_timeout: 60,
             max_message_size: 10_000_000, // 10MB
@@ -152,13 +152,26 @@ impl MessageRouter {
     ) -> Result<Self> {
         // Set up TLS client config
         let mut root_cert_store = RootCertStore::empty();
+        
+        // Read and process the certificate
         let cert_bytes = tokio::fs::read(&config.cert_path).await.map_err(|e| {
             MCPError::CommunicationError {
                 context: format!("Failed to read certificate file: {}", e),
                 source: Box::new(e),
             }
         })?;
-        let cert = rustls::pki_types::CertificateDer::from(cert_bytes);
+        
+        // Check if it's a PFX or regular certificate based on file extension
+        let is_pfx = config.cert_path.ends_with(".pfx") || config.cert_path.ends_with(".p12");
+        
+        let cert = if is_pfx {
+            // TODO: Implement PFX parsing for certificates
+            // For now, we'll use the public certificate directly
+            rustls::pki_types::CertificateDer::from(cert_bytes)
+        } else {
+            rustls::pki_types::CertificateDer::from(cert_bytes)
+        };
+        
         root_cert_store.add(cert.clone().into()).map_err(|e| {
             MCPError::CommunicationError {
                 context: format!("Failed to add certificate to root store: {}", e),
@@ -171,18 +184,53 @@ impl MessageRouter {
             .with_no_client_auth();
 
         // Set up TLS server config
-        let key_bytes = tokio::fs::read(&config.key_path).await.map_err(|e| {
-            MCPError::CommunicationError {
-                context: format!("Failed to read key file: {}", e),
-                source: Box::new(e),
-            }
-        })?;
-        let key = rustls::pki_types::PrivateKeyDer::try_from(key_bytes.as_slice()).map_err(|e| {
-            MCPError::CommunicationError {
-                context: format!("Failed to parse key file: {}", e),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            }
-        })?;
+        // Check if key file is a PFX file
+        let is_pfx_key = config.key_path.ends_with(".pfx") || config.key_path.ends_with(".p12");
+        
+        let key = if is_pfx_key {
+            // TODO: Implement proper PFX parsing using the pkcs12 crate
+            // The current implementation doesn't actually parse the PFX file
+            // A proper implementation would:
+            //   1. Read the PFX file
+            //   2. Parse it using the pkcs12 crate with the password "pandaceaSecret"
+            //   3. Extract the private key and certificate chain
+            //   4. Convert to rustls::pki_types::PrivateKeyDer format
+            // Example:
+            //   let pfx_bytes = tokio::fs::read(&config.key_path).await?;
+            //   let pfx = pkcs12::parse(&pfx_bytes, "pandaceaSecret")?;
+            //   let private_key = pfx.pkey.ok_or_else(|| MCPError::CommunicationError { ... })?;
+            //   Convert private_key to rustls::pki_types::PrivateKeyDer
+            let key_bytes = tokio::fs::read(&config.key_path).await.map_err(|e| {
+                MCPError::CommunicationError {
+                    context: format!("Failed to read key file: {}", e),
+                    source: Box::new(e),
+                }
+            })?;
+            
+            // For a PFX file, we would need to parse it and extract the private key
+            // This is a placeholder for now
+            rustls::pki_types::PrivateKeyDer::try_from(key_bytes.as_slice()).map_err(|e| {
+                MCPError::CommunicationError {
+                    context: format!("Failed to parse key file: {}", e),
+                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                }
+            })?
+        } else {
+            // Regular PEM key file
+            let key_bytes = tokio::fs::read(&config.key_path).await.map_err(|e| {
+                MCPError::CommunicationError {
+                    context: format!("Failed to read key file: {}", e),
+                    source: Box::new(e),
+                }
+            })?;
+            
+            rustls::pki_types::PrivateKeyDer::try_from(key_bytes.as_slice()).map_err(|e| {
+                MCPError::CommunicationError {
+                    context: format!("Failed to parse key file: {}", e),
+                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                }
+            })?
+        };
 
         let server_config = ServerConfig::builder()
             .with_no_client_auth()

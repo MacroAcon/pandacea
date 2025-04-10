@@ -36,6 +36,7 @@ tokio-rustls = "0.24.1" # For TLS support
 webpki-roots = "0.25.2" # Root certificates for TLS
 rustls = "0.21.7" # For TLS implementation
 rustls-pemfile = "1.0.3" # For reading PEM format certificates and keys
+pkcs12 = "0.2.0" # Added for PFX/PKCS12 certificate handling
 
 [build-dependencies]
 prost-build = "0.12.3" 
