@@ -1,1 +1,13 @@
-/target/ 
+/target/
+# Ignore private keys and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.cer
+/backend/certs/
+# Exclude public certificates that should be shared
+!**/public/*.pem
+!**/public/*.crt 
