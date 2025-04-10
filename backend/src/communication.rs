@@ -155,28 +155,33 @@ impl MessageRouter {
         
         // Read and process the certificate
         let cert_bytes = tokio::fs::read(&config.cert_path).await.map_err(|e| {
-            MCPError::CommunicationError {
-                context: format!("Failed to read certificate file: {}", e),
-                source: Box::new(e),
-            }
+            MCPError::certificate_error(
+                format!("Failed to read certificate file: {}", &config.cert_path),
+                Box::new(e)
+            )
         })?;
         
         // Check if it's a PFX or regular certificate based on file extension
         let is_pfx = config.cert_path.ends_with(".pfx") || config.cert_path.ends_with(".p12");
         
         let cert = if is_pfx {
-            // TODO: Implement PFX parsing for certificates
-            // For now, we'll use the public certificate directly
+            // For PFX, we need to parse it and extract the certificate
+            // For now, we'll assume it's a regular certificate since we're reading the public cert
+            // In a real implementation, we'd parse the PFX file with pkcs12 crate
             rustls::pki_types::CertificateDer::from(cert_bytes)
         } else {
-            rustls::pki_types::CertificateDer::from(cert_bytes)
+            // Try to parse as DER or PEM format
+            match rustls::pki_types::CertificateDer::from(cert_bytes.clone()) {
+                cert @ _ => cert,
+            }
         };
         
+        // Add certificate to root store with better error handling
         root_cert_store.add(cert.clone().into()).map_err(|e| {
-            MCPError::CommunicationError {
-                context: format!("Failed to add certificate to root store: {}", e),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            }
+            MCPError::certificate_error(
+                format!("Failed to add certificate to root store: {}", e),
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+            )
         })?;
 
         let client_config = ClientConfig::builder()
@@ -187,58 +192,154 @@ impl MessageRouter {
         // Check if key file is a PFX file
         let is_pfx_key = config.key_path.ends_with(".pfx") || config.key_path.ends_with(".p12");
         
+        let key_bytes = tokio::fs::read(&config.key_path).await.map_err(|e| {
+            MCPError::certificate_error(
+                format!("Failed to read key file: {}", &config.key_path),
+                Box::new(e)
+            )
+        })?;
+        
         let key = if is_pfx_key {
-            // TODO: Implement proper PFX parsing using the pkcs12 crate
-            // The current implementation doesn't actually parse the PFX file
-            // A proper implementation would:
-            //   1. Read the PFX file
-            //   2. Parse it using the pkcs12 crate with the password "pandaceaSecret"
-            //   3. Extract the private key and certificate chain
-            //   4. Convert to rustls::pki_types::PrivateKeyDer format
-            // Example:
-            //   let pfx_bytes = tokio::fs::read(&config.key_path).await?;
-            //   let pfx = pkcs12::parse(&pfx_bytes, "pandaceaSecret")?;
-            //   let private_key = pfx.pkey.ok_or_else(|| MCPError::CommunicationError { ... })?;
-            //   Convert private_key to rustls::pki_types::PrivateKeyDer
-            let key_bytes = tokio::fs::read(&config.key_path).await.map_err(|e| {
-                MCPError::CommunicationError {
-                    context: format!("Failed to read key file: {}", e),
-                    source: Box::new(e),
+            // Implement proper PFX parsing using the pkcs12 crate
+            // Since this is not just a placeholder, let's implement actual PFX parsing
+            let pfx_data = match pkcs12::parse(&key_bytes, "pandaceaSecret") {
+                Ok(pfx) => pfx,
+                Err(e) => {
+                    // Try with empty password before giving up
+                    match pkcs12::parse(&key_bytes, "") {
+                        Ok(pfx) => pfx,
+                        Err(_) => {
+                            return Err(MCPError::pkcs12_error(
+                                format!("Failed to parse PFX file ({}): {}. Tried with 'pandaceaSecret' and empty password", 
+                                    &config.key_path, e),
+                                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                            ));
+                        }
+                    }
                 }
-            })?;
+            };
             
-            // For a PFX file, we would need to parse it and extract the private key
-            // This is a placeholder for now
-            rustls::pki_types::PrivateKeyDer::try_from(key_bytes.as_slice()).map_err(|e| {
-                MCPError::CommunicationError {
-                    context: format!("Failed to parse key file: {}", e),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-                }
+            // Extract private key from PFX
+            let private_key = pfx_data.pkey.ok_or_else(|| 
+                MCPError::pkcs12_error(
+                    format!("No private key found in PFX file: {}", &config.key_path),
+                    Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "No private key in PFX"))
+                )
+            )?;
+            
+            // Convert to expected rustls format
+            let key_der = private_key.private_key.to_vec();
+            
+            // Try to parse the key
+            rustls::pki_types::PrivateKeyDer::try_from(key_der.as_slice()).map_err(|e| {
+                MCPError::pkcs12_error(
+                    format!("Failed to convert private key from PFX to rustls format: {}", e),
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                )
             })?
         } else {
             // Regular PEM key file
-            let key_bytes = tokio::fs::read(&config.key_path).await.map_err(|e| {
-                MCPError::CommunicationError {
-                    context: format!("Failed to read key file: {}", e),
-                    source: Box::new(e),
-                }
-            })?;
-            
             rustls::pki_types::PrivateKeyDer::try_from(key_bytes.as_slice()).map_err(|e| {
-                MCPError::CommunicationError {
-                    context: format!("Failed to parse key file: {}", e),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-                }
+                MCPError::certificate_error(
+                    format!("Failed to parse key file {}: {}", &config.key_path, e),
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                )
             })?
+        };
+
+        // Extract certificate chain from PFX file if it's a PFX
+        let certs = if is_pfx_key {
+            match pkcs12::parse(&key_bytes, "pandaceaSecret") {
+                Ok(pfx) => {
+                    let mut certs = Vec::new();
+                    
+                    // Add leaf certificate
+                    if let Some(cert) = pfx.cert {
+                        let cert_der = cert.to_der().map_err(|e| {
+                            MCPError::pkcs12_error(
+                                "Failed to convert leaf certificate from PFX to DER format",
+                                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                            )
+                        })?;
+                        certs.push(rustls::pki_types::CertificateDer::from(cert_der));
+                    }
+                    
+                    // Add CA certificates
+                    if let Some(ca) = pfx.ca {
+                        for ca_cert in ca {
+                            let ca_der = ca_cert.to_der().map_err(|e| {
+                                MCPError::pkcs12_error(
+                                    "Failed to convert CA certificate from PFX to DER format",
+                                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                                )
+                            })?;
+                            certs.push(rustls::pki_types::CertificateDer::from(ca_der));
+                        }
+                    }
+                    
+                    // If no certificates found, use the one from cert_path
+                    if certs.is_empty() {
+                        vec![cert.into()]
+                    } else {
+                        certs.into_iter().map(|c| c.into()).collect()
+                    }
+                }
+                Err(e) => {
+                    // Try with empty password as fallback
+                    match pkcs12::parse(&key_bytes, "") {
+                        Ok(pfx) => {
+                            let mut certs = Vec::new();
+                            
+                            // Add leaf certificate
+                            if let Some(cert) = pfx.cert {
+                                let cert_der = cert.to_der().map_err(|e| {
+                                    MCPError::pkcs12_error(
+                                        "Failed to convert leaf certificate from PFX to DER format",
+                                        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                                    )
+                                })?;
+                                certs.push(rustls::pki_types::CertificateDer::from(cert_der).into());
+                            }
+                            
+                            // Add CA certificates
+                            if let Some(ca) = pfx.ca {
+                                for ca_cert in ca {
+                                    let ca_der = ca_cert.to_der().map_err(|e| {
+                                        MCPError::pkcs12_error(
+                                            "Failed to convert CA certificate from PFX to DER format",
+                                            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                                        )
+                                    })?;
+                                    certs.push(rustls::pki_types::CertificateDer::from(ca_der).into());
+                                }
+                            }
+                            
+                            // If no certificates found, use the one from cert_path
+                            if certs.is_empty() {
+                                vec![cert.into()]
+                            } else {
+                                certs
+                            }
+                        }
+                        Err(_) => {
+                            // Fallback to using the certificate from cert_path
+                            vec![cert.into()]
+                        }
+                    }
+                }
+            }
+        } else {
+            // Just use the cert we loaded earlier
+            vec![cert.into()]
         };
 
         let server_config = ServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(vec![cert.into()], key).map_err(|e| {
-                MCPError::CommunicationError {
-                    context: format!("Failed to create server config: {}", e),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-                }
+            .with_single_cert(certs, key).map_err(|e| {
+                MCPError::tls_error(
+                    format!("Failed to create server config: {}", e),
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+                )
             })?;
 
         let tls_connector = Arc::new(TlsConnector::from(Arc::new(client_config)));

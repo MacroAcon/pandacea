@@ -91,6 +91,30 @@ pub enum MCPError {
         /// The underlying error that occurred
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    /// Error related to certificate operations (loading, parsing, validation)
+    #[error("Certificate error: {context} - {source}")]
+    CertificateError {
+        /// Context about what certificate operation was being attempted
+        context: String,
+        /// The underlying error that occurred
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    /// Error related to PKCS#12 (PFX) format handling
+    #[error("PKCS#12 error: {context} - {source}")]
+    Pkcs12Error {
+        /// Context about what PKCS#12 operation was being attempted
+        context: String,
+        /// The underlying error that occurred
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    /// Error related to TLS configuration or connection
+    #[error("TLS error: {context} - {source}")]
+    TlsError {
+        /// Context about what TLS operation was being attempted
+        context: String,
+        /// The underlying error that occurred
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 /// A specialized `Result` type for MCP operations, using [`MCPError`](crate::error::MCPError).
@@ -129,6 +153,16 @@ impl From<std::io::Error> for MCPError {
 impl From<Pkcs8Error> for MCPError {
     fn from(err: Pkcs8Error) -> Self {
         MCPError::Pkcs8Error { context: "PKCS#8 operation".to_string(), source: err }
+    }
+}
+
+// Add From for pkcs12 errors
+impl From<pkcs12::Error> for MCPError {
+    fn from(err: pkcs12::Error) -> Self {
+        MCPError::Pkcs12Error { 
+            context: "PKCS#12 parsing operation".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))
+        }
     }
 }
 
@@ -186,5 +220,17 @@ impl MCPError {
     
     pub fn audit_error(context: impl Into<String>, source: impl Into<Box<dyn std::error::Error + Send + Sync + 'static>>) -> Self {
         MCPError::AuditError { context: context.into(), source: source.into() }
+    }
+    
+    pub fn certificate_error(context: impl Into<String>, source: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        MCPError::CertificateError { context: context.into(), source: source.into() }
+    }
+    
+    pub fn pkcs12_error(context: impl Into<String>, source: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        MCPError::Pkcs12Error { context: context.into(), source: source.into() }
+    }
+    
+    pub fn tls_error(context: impl Into<String>, source: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        MCPError::TlsError { context: context.into(), source: source.into() }
     }
 } 
