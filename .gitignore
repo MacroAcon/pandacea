@@ -1,4 +1,14 @@
 /target/
+
+# Security: Credentials and secrets
+.env
+*.env
+.env.*
+secrets.json
+*secret*
+*credentials*
+*password*
+
 # Ignore private keys and certificates
 *.pem
 *.key
@@ -7,7 +17,27 @@
 *.pfx
 *.keystore
 *.cer
-/backend/certs/
+*.jks
+*.der
+
+# Exclude specific directories that must be tracked
+!/backend/certs/public/*.pem
+!/backend/certs/public/*.crt
+!/backend/certs/cert.pem
+
+# Explicitly include these directories to be sure
+!/backend/certs/
+!/backend/certs/public/
+/backend/certs/private/
+
+# Build artifacts
+/target/
+/dist/
+/build/
+*.o
+*.obj
+*.class
+
 # Exclude public certificates that should be shared
 !**/public/*.pem
 !**/public/*.crt 

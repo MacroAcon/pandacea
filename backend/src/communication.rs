@@ -202,7 +202,8 @@ impl MessageRouter {
         let key = if is_pfx_key {
             // Implement proper PFX parsing using the pkcs12 crate
             // Since this is not just a placeholder, let's implement actual PFX parsing
-            let pfx_data = match pkcs12::parse(&key_bytes, "pandaceaSecret") {
+            let pfx_password = std::env::var("PANDACEA_CERT_PASSWORD").unwrap_or_default();
+            let pfx_data = match pkcs12::parse(&key_bytes, &pfx_password) {
                 Ok(pfx) => pfx,
                 Err(e) => {
                     // Try with empty password before giving up
@@ -210,7 +211,7 @@ impl MessageRouter {
                         Ok(pfx) => pfx,
                         Err(_) => {
                             return Err(MCPError::pkcs12_error(
-                                format!("Failed to parse PFX file ({}): {}. Tried with 'pandaceaSecret' and empty password", 
+                                format!("Failed to parse PFX file ({}): {}. Tried with environment variable password and empty password", 
                                     &config.key_path, e),
                                 Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
                             ));
