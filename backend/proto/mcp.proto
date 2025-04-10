@@ -1,0 +1,512 @@
+syntax = "proto3";
+
+package pandacea.mcp;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Main MCP request message sent by requestors to responders
+message McpRequest {
+  // Unique identifier for this request
+  string request_id = 1;
+  // MCP version used
+  string mcp_version = 2;
+  // Information about the requestor
+  RequestorIdentity requestor_identity = 3;
+  // Purpose for data access
+  PurposeDNA purpose_dna = 4;
+  // What permission is being requested
+  PermissionSpecification permission_specification = 5;
+  // For backward compatibility - list of permissions (use permission_specification instead)
+  repeated PermissionSpecification permissions = 6;
+  // Compensation offered for data access
+  CompensationModel compensation_model = 7;
+  // Timestamp when the request was created
+  oneof request_time {
+    google.protobuf.Timestamp timestamp = 8;
+    google.protobuf.Timestamp request_timestamp = 14;
+  }
+  // When this request expires
+  oneof expiry_time {
+    google.protobuf.Timestamp expiration = 9;
+    google.protobuf.Timestamp request_expiry = 15;
+  }
+  // Trust credentials and attestations
+  TrustInformation trust_information = 10;
+  // Authentication information
+  AuthenticationInfo authentication_info = 11;
+  // Digital signature of canonical request
+  CryptoSignature signature = 12;
+  // Additional metadata as needed
+  google.protobuf.Struct metadata = 13;
+  // Related request identifier (for multi-step or follow-up requests)
+  string related_request_id = 16;
+  // Context data for additional request information
+  google.protobuf.Struct context_data = 17;
+}
+
+// Response from responders to requestors
+message McpResponse {
+  // Same ID as the request
+  string request_id = 1;
+  // MCP version used
+  string mcp_version = 2;
+  // Information about the responder
+  ResponderIdentity responder_identity = 3;
+  // Timestamp when the response was created
+  google.protobuf.Timestamp response_timestamp = 4;
+  // Response status code
+  Status status = 5;
+  // Status message
+  optional string status_message = 6;
+  // Status for each permission
+  repeated PermissionStatus permission_status = 7;
+  // Digital signature of canonical response
+  CryptoSignature signature = 8;
+  // Payload data if request granted
+  optional bytes response_payload = 9;
+  // Consent receipt for auditing
+  optional bytes consent_receipt = 10;
+  // Receipt for compensation
+  optional CompensationReceipt compensation_receipt = 11;
+  // Usage limitations on returned data
+  optional UsageLimitations usage_limitations = 12;
+  // Additional metadata as needed
+  google.protobuf.Struct metadata = 13;
+
+  enum Status {
+    UNSPECIFIED = 0;
+    APPROVED = 1;
+    PARTIALLY_APPROVED = 2;
+    DENIED = 3;
+    ERROR = 4;
+    REQUIRES_USER_INPUT = 5;
+  }
+
+  // Permission status details
+  message PermissionStatus {
+    // Resource identifier
+    string resource_id = 1;
+    // Action requested
+    int32 action = 2;
+    // Status code for this specific permission
+    int32 status = 3;
+    // Reason for the status
+    optional string reason = 4;
+  }
+}
+
+// Identity information for requestors
+message RequestorIdentity {
+  // Pseudonymous ID for the requestor
+  string pseudonym_id = 1;
+  // Human-readable name
+  optional string name = 2;
+  // URL to verify identity
+  optional string verification_url = 3;
+  // Public key for verification
+  optional bytes public_key = 4;
+  // Key ID for the public key
+  optional string key_id = 5;
+  // Reputation score
+  optional double reputation_score = 6;
+  // Additional identity attributes
+  google.protobuf.Struct attributes = 7;
+}
+
+// Identity information for responders
+message ResponderIdentity {
+  // Pseudonymous ID for the responder
+  string pseudonym_id = 1;
+  // Human-readable name
+  optional string name = 2;
+  // URL to verify identity
+  optional string verification_url = 3;
+  // Public key for verification
+  optional bytes public_key = 4;
+  // Key ID for the public key
+  optional string key_id = 5;
+  // Additional identity attributes
+  google.protobuf.Struct attributes = 6;
+}
+
+// Digital signature information
+message CryptoSignature {
+  // Signature bytes
+  bytes signature = 1;
+  // Algorithm used (e.g. "ed25519")
+  string algorithm = 2;
+  // Key ID used for signing
+  string key_id = 3;
+  // Timestamp when signed
+  google.protobuf.Timestamp timestamp = 4;
+  // Additional signature metadata
+  google.protobuf.Struct metadata = 5;
+}
+
+// Purpose DNA describes why data is being requested
+message PurposeDNA {
+  // Human-readable name of the purpose
+  string name = 1;
+  // Detailed description
+  string description = 2;
+  // Category of purpose
+  optional PurposeCategory category = 3;
+  // Primary purpose category (for backward compatibility)
+  optional int32 primary_purpose_category = 4;
+  // Purpose identifier for compatibility
+  string purpose_id = 5;
+  // Specific purpose description for compatibility
+  string specific_purpose_description = 6;
+  // Data types involved in this purpose
+  repeated string data_types_involved = 7;
+  // Duration of data use
+  optional UsageDuration usage_duration = 8;
+  // Purpose expiry timestamp for compatibility
+  google.protobuf.Timestamp purpose_expiry_timestamp = 9;
+  // Whether data will be shared with third parties
+  optional ThirdPartySharing third_party_sharing = 10;
+  // Limitations on data reuse
+  optional ReuseLimitations reuse_limitations = 11;
+  // Links to privacy policy or terms
+  repeated string policy_links = 12;
+  // Additional purpose details
+  google.protobuf.Struct details = 13;
+
+  // Purpose categories
+  enum PurposeCategory {
+    UNSPECIFIED = 0;
+    CORE_SERVICE = 1;
+    PERSONALIZATION = 2;
+    MARKETING = 3;
+    ANALYTICS = 4;
+    RESEARCH = 5;
+    LEGAL = 6;
+    SECURITY = 7;
+    OTHER = 8;
+  }
+
+  // How long data will be used
+  message UsageDuration {
+    // Duration in seconds, or -1 for indefinite
+    int64 duration_seconds = 1;
+    // Human-readable duration
+    string duration_text = 2;
+    // Specific expiration date
+    optional google.protobuf.Timestamp expiration = 3;
+  }
+
+  // Third party sharing details
+  message ThirdPartySharing {
+    // Whether data will be shared
+    bool will_share = 1;
+    // Categories of recipients
+    repeated string recipient_categories = 2;
+    // Specific named recipients
+    repeated string named_recipients = 3;
+    // Purpose of sharing
+    optional string sharing_purpose = 4;
+  }
+
+  // Reuse limitations
+  message ReuseLimitations {
+    // Whether data can be used for other purposes
+    bool allow_repurposing = 1;
+    // Allowed additional purposes
+    repeated PurposeCategory allowed_purposes = 2;
+    // Required notice before repurposing
+    bool requires_notice = 3;
+    // Whether reuse requires new consent
+    bool requires_consent = 4;
+  }
+}
+
+// Permission being requested
+message PermissionSpecification {
+  // Resource identifier
+  string resource_id = 1;
+  // Action to perform
+  optional Action action = 2;
+  // Sensitivity level of the data
+  optional int32 sensitivity_level = 3;
+  // Resource type
+  optional string resource_type = 4;
+  // Constraints on the permission
+  repeated Constraint constraints = 5;
+  // Permission justification
+  string justification = 6;
+  // Delegation chain
+  repeated DelegationInfo delegation_chain = 7;
+  // Additional details
+  google.protobuf.Struct details = 8;
+
+  // Constraint on permission
+  message Constraint {
+    // Constraint type
+    string constraint_type = 1;
+    // Constraint parameters
+    google.protobuf.Struct parameters = 2;
+    // Human-readable description
+    string description = 3;
+  }
+
+  // Delegation information
+  message DelegationInfo {
+    // Who delegated this permission
+    string delegator_id = 1;
+    // When delegation was granted
+    google.protobuf.Timestamp delegation_time = 2;
+    // Conditions of delegation
+    optional google.protobuf.Struct conditions = 3;
+    // Signature from delegator
+    optional CryptoSignature signature = 4;
+  }
+
+  // Actions that can be performed
+  enum Action {
+    UNSPECIFIED = 0;
+    READ = 1;
+    WRITE = 2;
+    UPDATE = 3;
+    DELETE = 4;
+    EXECUTE = 5;
+    QUERY = 6;
+    SUBSCRIBE = 7;
+    SHARE = 8;
+    EXTRACT = 9;
+    INFER = 10;
+    PROCESS = 11;
+  }
+
+  // Sensitivity levels
+  enum SensitivityLevel {
+    UNSPECIFIED_SENSITIVITY = 0;
+    PUBLIC = 1;
+    INTERNAL = 2;
+    CONFIDENTIAL = 3;
+    RESTRICTED = 4;
+    SECRET = 5;
+  }
+}
+
+// Compensation offered for data access
+message CompensationModel {
+  // Type of compensation
+  optional CompensationType type = 1;
+  // Amount offered
+  optional double amount = 2;
+  // Currency code
+  optional string currency_code = 3;
+  // Payment method details
+  optional PaymentMethod payment_method = 4;
+  // Revenue sharing details if applicable
+  optional RevenueSharing revenue_sharing = 5;
+  // Additional compensation details
+  google.protobuf.Struct details = 6;
+
+  // Types of compensation
+  enum CompensationType {
+    UNSPECIFIED_COMPENSATION = 0;
+    MONETARY = 1;
+    REVENUE_SHARING = 2;
+    CREDIT = 3;
+    TOKEN = 4;
+    REPUTATION = 5;
+    FREE_SERVICE = 6;
+    NONE = 7;
+  }
+
+  // Payment method details
+  message PaymentMethod {
+    // Method type (e.g. "crypto", "bank", "credit_card")
+    string method_type = 1;
+    // Account/wallet identifier
+    optional string account_id = 2;
+    // Provider name
+    optional string provider = 3;
+    // Additional payment method details
+    google.protobuf.Struct details = 4;
+  }
+
+  // Revenue sharing details
+  message RevenueSharing {
+    // Revenue share percentage
+    double percentage = 1;
+    // How often payments will be made
+    optional string payment_frequency = 2;
+    // Minimum payment threshold
+    optional double minimum_threshold = 3;
+    // Rules for calculating revenue
+    optional google.protobuf.Struct rules = 4;
+  }
+}
+
+// Trust credentials and attestations
+message TrustInformation {
+  // Credentials (verifiable credentials, certificates)
+  repeated Credential credentials = 1;
+  // Attestations from trusted parties
+  repeated Attestation attestations = 2;
+  // Reputation score or level
+  optional double reputation_score = 3;
+  // Proof of trustworthiness
+  optional Proof proof = 4;
+  // Additional trust information
+  google.protobuf.Struct details = 5;
+
+  // Credential information
+  message Credential {
+    // Credential type
+    string credential_type = 1;
+    // Issuer of the credential
+    string issuer = 2;
+    // When the credential was issued
+    optional google.protobuf.Timestamp issuance_date = 3;
+    // When the credential expires
+    optional google.protobuf.Timestamp expiration_date = 4;
+    // Credential data (e.g. JSON-LD)
+    google.protobuf.Struct credential_data = 5;
+    // Cryptographic proof
+    optional bytes proof = 6;
+  }
+
+  // Attestation from a trusted party
+  message Attestation {
+    // Attestation type
+    string attestation_type = 1;
+    // Who made the attestation
+    string attester = 2;
+    // When the attestation was made
+    google.protobuf.Timestamp attestation_date = 3;
+    // Content of the attestation
+    string content = 4;
+    // Signature on the attestation
+    optional CryptoSignature signature = 5;
+  }
+
+  // Proof of trustworthiness
+  message Proof {
+    // Proof type
+    string proof_type = 1;
+    // Proof data
+    google.protobuf.Struct proof_data = 2;
+    // Challenge if applicable
+    optional string challenge = 3;
+    // Verification method to use
+    optional string verification_method = 4;
+  }
+}
+
+// Authentication information
+message AuthenticationInfo {
+  // Authentication method used
+  string auth_method = 1;
+  // Authentication token or proof
+  optional bytes auth_token = 2;
+  // Authentication timestamp
+  optional google.protobuf.Timestamp auth_time = 3;
+  // Additional authentication claims
+  google.protobuf.Struct claims = 4;
+  // For multi-factor auth, factors used
+  repeated string auth_factors_used = 5;
+  // Authentication provider
+  optional string auth_provider = 6;
+}
+
+// Receipt for compensation
+message CompensationReceipt {
+  // Unique receipt ID
+  string receipt_id = 1;
+  // Amount paid
+  double amount = 2;
+  // Currency code
+  string currency_code = 3;
+  // When payment was made
+  google.protobuf.Timestamp payment_timestamp = 4;
+  // Payment status
+  PaymentStatus status = 5;
+  // Transaction ID or reference
+  optional string transaction_id = 6;
+  // Payment method used
+  optional string payment_method = 7;
+  // Additional receipt data
+  google.protobuf.Struct details = 8;
+
+  // Payment statuses
+  enum PaymentStatus {
+    UNSPECIFIED_PAYMENT = 0;
+    PENDING = 1;
+    COMPLETED = 2;
+    FAILED = 3;
+    REFUNDED = 4;
+    DISPUTED = 5;
+  }
+}
+
+// Limitations on data usage
+message UsageLimitations {
+  // Time-based limitations
+  optional TimeLimitations time_limitations = 1;
+  // Scope limitations
+  optional ScopeLimitations scope_limitations = 2;
+  // Distribution limitations
+  optional DistributionLimitations distribution_limitations = 3;
+  // Processing limitations
+  optional ProcessingLimitations processing_limitations = 4;
+  // Additional limitations
+  google.protobuf.Struct additional_limitations = 5;
+
+  // Time-based limitations
+  message TimeLimitations {
+    // Max duration in seconds
+    int64 max_duration_seconds = 1;
+    // Absolute expiry timestamp
+    optional google.protobuf.Timestamp expiry_timestamp = 2;
+    // Max number of uses
+    optional int32 max_uses = 3;
+  }
+
+  // Scope limitations
+  message ScopeLimitations {
+    // Allowed purposes
+    repeated PurposeDNA.PurposeCategory allowed_purposes = 1;
+    // Allowed contexts
+    repeated string allowed_contexts = 2;
+    // Geographic restrictions
+    repeated string geographic_restrictions = 3;
+  }
+
+  // Distribution limitations
+  message DistributionLimitations {
+    // Whether sharing is prohibited
+    bool sharing_prohibited = 1;
+    // Allowed recipients
+    repeated string allowed_recipients = 2;
+    // Prohibited recipients
+    repeated string prohibited_recipients = 3;
+    // Whether derivations are allowed
+    bool derivations_allowed = 4;
+  }
+
+  // Processing limitations
+  message ProcessingLimitations {
+    // Prohibited operations
+    repeated ProcessingLimitation prohibited_operations = 1;
+    // Required protections
+    repeated string required_protections = 2;
+    // How data must be stored
+    optional string storage_requirements = 3;
+    
+    // Types of processing limitations
+    enum ProcessingLimitation {
+      UNSPECIFIED_LIMITATION = 0;
+      NO_IDENTIFICATION = 1;
+      NO_SENSITIVE_INFERENCE = 2;
+      NO_PROFILING = 3;
+      NO_AUTOMATED_DECISIONS = 4;
+      NO_MARKETING = 5;
+      NO_LARGE_LANGUAGE_MODELS = 6;
+      NO_TRAINING = 7;
+    }
+  }
+} 

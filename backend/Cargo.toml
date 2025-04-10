@@ -28,6 +28,14 @@ rand = "0.8" # Added main rand crate
 
 # Added for canonical serialization
 ciborium = "0.2.2" # RFC 7049 compliant CBOR implementation with deterministic encoding
+half = { version = "2.3.1", features = ["serde"] } # For properly handling half-precision floats
+serde_cbor = { version = "0.11", features = ["std"] } # Additional CBOR utilities
+
+# Added for communication layer
+tokio-rustls = "0.24.1" # For TLS support
+webpki-roots = "0.25.2" # Root certificates for TLS
+rustls = "0.21.7" # For TLS implementation
+rustls-pemfile = "1.0.3" # For reading PEM format certificates and keys
 
 [build-dependencies]
 prost-build = "0.12.3" 

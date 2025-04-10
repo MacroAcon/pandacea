@@ -13,7 +13,7 @@ pub use crate::mcp::McpResponse;
 
 /// Describes the purpose (intent) behind an `McpRequest`.
 /// Includes categorization, description, data types, processing, storage, etc.
-pub use crate::mcp::PurposeDna;
+pub use crate::mcp::PurposeDNA;
 
 /// Identifies the entity making an `McpRequest`.
 /// Includes a pseudonymous ID, public key, and optional attestations.

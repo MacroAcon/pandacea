@@ -2,9 +2,11 @@
 
 use crate::error::{Result, MCPError};
 use crate::types::{
-    McpRequest, PurposeDna, PermissionSpecification,
+    McpRequest, PurposeDna, PermissionSpecification, CompensationModel, TrustInformation,
     purpose_dna::PurposeCategory,
-    permission_specification::Action
+    permission_specification::Action,
+    permission_specification::SensitivityLevel,
+    compensation_model::CompensationType
 };
 use crate::utils::prost_struct_to_hashmap;
 use std::collections::{HashMap, HashSet};
@@ -19,6 +21,9 @@ use serde_json::Value;
 /// 2. Data Type Consistency
 /// 3. Action Appropriateness
 /// 4. Advanced Constraint Validation (basic format/value checks)
+/// 5. Compensation Model Validation (if present)
+/// 6. Trust Information Validation (if present)
+/// 7. Sensitivity Level Alignment
 ///
 /// Note: Context-dependent constraint evaluation (e.g., rate limits, time windows vs current time)
 /// might be handled separately after this initial validation passes.
@@ -40,6 +45,19 @@ pub fn validate_request_semantics(request: &McpRequest) -> Result<()> {
 
     // 4. Advanced Constraint Validation (basic checks)
     validate_advanced_constraints(request)?;
+    
+    // 5. Compensation Model Validation (if present)
+    if let Some(compensation) = &request.compensation_model {
+        validate_compensation_model(compensation)?;
+    }
+    
+    // 6. Trust Information Validation (if present)
+    if let Some(trust_info) = &request.trust_info {
+        validate_trust_information(trust_info)?;
+    }
+    
+    // 7. Sensitivity Level Alignment
+    validate_sensitivity_levels(&request.permissions)?;
 
     Ok(())
 }
@@ -257,7 +275,145 @@ fn is_valid_iso8601_ish(time_str: &str) -> bool {
     (time_str.ends_with('Z') || time_str.contains('+') || time_str.rfind('-').map_or(false, |i| i > 10))
 }
 
+/// Validates that the compensation model is consistent and contains required fields
+fn validate_compensation_model(compensation: &CompensationModel) -> Result<()> {
+    // Get compensation type (should be valid after syntax check)
+    let compensation_type = CompensationType::try_from(compensation.compensation_type)
+        .map_err(|_| MCPError::invalid_field(
+            "compensation_model.compensation_type",
+            "Invalid compensation type"
+        ))?;
+        
+    // Check requirements based on compensation type
+    match compensation_type {
+        CompensationType::Unspecified => {
+            return Err(MCPError::invalid_field(
+                "compensation_model.compensation_type",
+                "Compensation type must not be UNSPECIFIED"
+            ));
+        },
+        CompensationType::Monetary | CompensationType::Token => {
+            // For monetary and token payments, amount and unit are required
+            if compensation.amount <= 0.0 {
+                return Err(MCPError::invalid_field(
+                    "compensation_model.amount",
+                    "Amount must be greater than zero for monetary or token compensation"
+                ));
+            }
+            
+            if compensation.unit.is_empty() {
+                return Err(MCPError::missing_field("compensation_model.unit"));
+            }
+            
+            // Payment method is required for monetary/token
+            if compensation.payment_method.is_none() {
+                return Err(MCPError::missing_field("compensation_model.payment_method"));
+            }
+        },
+        CompensationType::RevenueShare => {
+            // Revenue sharing model is required
+            if compensation.revenue_sharing.is_none() {
+                return Err(MCPError::missing_field("compensation_model.revenue_sharing"));
+            }
+            
+            // Check revenue sharing details
+            let revenue_sharing = compensation.revenue_sharing.as_ref().unwrap();
+            if revenue_sharing.percentage <= 0.0 || revenue_sharing.percentage > 100.0 {
+                return Err(MCPError::invalid_field(
+                    "compensation_model.revenue_sharing.percentage",
+                    "Percentage must be between 0 and 100"
+                ));
+            }
+            
+            if revenue_sharing.calculation_method.is_empty() {
+                return Err(MCPError::missing_field("compensation_model.revenue_sharing.calculation_method"));
+            }
+        },
+        _ => {} // No specific validations for other types
+    }
+    
+    Ok(())
+}
 
+/// Validates trust information for consistency
+fn validate_trust_information(trust_info: &TrustInformation) -> Result<()> {
+    // Basic validation for trust score - must be between 0 and 100
+    if trust_info.trust_score > 100 {
+        return Err(MCPError::invalid_field(
+            "trust_info.trust_score",
+            "Trust score must be between 0 and 100"
+        ));
+    }
+    
+    // Validate assessment information
+    if !trust_info.assessment_method.is_empty() && trust_info.assessment_provider.is_empty() {
+        return Err(MCPError::missing_field(
+            "trust_info.assessment_provider must be provided when assessment_method is specified"
+        ));
+    }
+    
+    // Validate credentials if present
+    for (i, credential) in trust_info.trust_credentials.iter().enumerate() {
+        if credential.credential_type.is_empty() {
+            return Err(MCPError::missing_field(
+                &format!("trust_info.trust_credentials[{}].credential_type", i)
+            ));
+        }
+        
+        if credential.issuer.is_empty() {
+            return Err(MCPError::missing_field(
+                &format!("trust_info.trust_credentials[{}].issuer", i)
+            ));
+        }
+        
+        if credential.credential_id.is_empty() {
+            return Err(MCPError::missing_field(
+                &format!("trust_info.trust_credentials[{}].credential_id", i)
+            ));
+        }
+    }
+    
+    Ok(())
+}
+
+/// Validates that sensitivity levels are consistent with the actions and resource types
+fn validate_sensitivity_levels(permissions: &[PermissionSpecification]) -> Result<()> {
+    for (i, permission) in permissions.iter().enumerate() {
+        // Skip if no sensitivity level specified
+        if permission.sensitivity_level == 0 {
+            continue;
+        }
+        
+        // Get sensitivity level
+        let sensitivity = SensitivityLevel::try_from(permission.sensitivity_level)
+            .map_err(|_| MCPError::invalid_field(
+                &format!("permissions[{}].sensitivity_level", i),
+                "Invalid sensitivity level"
+            ))?;
+            
+        // If CRITICAL sensitivity, validate additional safeguards
+        if sensitivity == SensitivityLevel::Critical {
+            // Check if write or delete actions have additional justification
+            let action = Action::try_from(permission.requested_action)
+                .map_err(|_| MCPError::internal("Invalid action survived syntax validation"))?;
+                
+            if (action == Action::Write || action == Action::Delete) && permission.justification.is_empty() {
+                return Err(MCPError::missing_field(
+                    &format!("permissions[{}].justification for CRITICAL sensitivity resource", i)
+                ));
+            }
+            
+            // Check for required constraints on high sensitivity data
+            if permission.constraints.is_none() {
+                return Err(MCPError::missing_field(
+                    &format!("permissions[{}].constraints for CRITICAL sensitivity resource", i)
+                ));
+            }
+        }
+    }
+    
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -441,5 +597,125 @@ mod tests {
         let req2 = create_signed_request(&key_pair, PurposeCategory::Personalization, vec![create_test_permission("p", Action::Read, Some(create_prost_struct(map2)))]);
         assert!(validate_request_semantics(&req2).is_err());
         assert!(matches!(validate_request_semantics(&req2).unwrap_err(), MCPError::ConstraintViolation { constraint, .. } if constraint == "time_window"));
+    }
+
+    // --- New Tests for Added Validation Functions ---
+    
+    #[test]
+    fn test_semantic_compensation_model_valid() {
+        let compensation = CompensationModel {
+            compensation_type: CompensationType::Monetary as i32,
+            amount: 10.0,
+            unit: "USD".to_string(),
+            payment_method: Some(create_test_payment_method()),
+            revenue_sharing: None,
+        };
+        
+        assert!(validate_compensation_model(&compensation).is_ok());
+    }
+    
+    #[test]
+    fn test_semantic_compensation_model_invalid() {
+        let mut compensation = CompensationModel {
+            compensation_type: CompensationType::Monetary as i32,
+            amount: 0.0, // Invalid amount
+            unit: "USD".to_string(),
+            payment_method: Some(create_test_payment_method()),
+            revenue_sharing: None,
+        };
+        
+        assert!(validate_compensation_model(&compensation).is_err());
+        
+        // Fix amount but remove unit
+        compensation.amount = 10.0;
+        compensation.unit = "".to_string(); // Invalid: empty unit
+        
+        assert!(validate_compensation_model(&compensation).is_err());
+    }
+    
+    #[test]
+    fn test_semantic_trust_information_valid() {
+        let trust_info = TrustInformation {
+            trust_score: 85,
+            assessment_method: "Algorithm-X".to_string(),
+            assessment_provider: "TrustOrg".to_string(),
+            assessment_timestamp: Some(current_prost_timestamp()),
+            trust_credentials: vec![create_test_trust_credential()],
+        };
+        
+        assert!(validate_trust_information(&trust_info).is_ok());
+    }
+    
+    #[test]
+    fn test_semantic_trust_information_invalid() {
+        let trust_info = TrustInformation {
+            trust_score: 120, // Invalid: over 100
+            assessment_method: "Algorithm-X".to_string(),
+            assessment_provider: "TrustOrg".to_string(),
+            assessment_timestamp: None,
+            trust_credentials: vec![],
+        };
+        
+        assert!(validate_trust_information(&trust_info).is_err());
+    }
+    
+    #[test]
+    fn test_semantic_sensitivity_levels_valid() {
+        let permissions = vec![
+            PermissionSpecification {
+                resource_identifier: "user.email".to_string(),
+                requested_action: Action::Read as i32,
+                sensitivity_level: SensitivityLevel::High as i32,
+                constraints: Some(create_test_constraints()),
+                justification: "Required for account verification".to_string(),
+                delegation_chain: vec![],
+            }
+        ];
+        
+        assert!(validate_sensitivity_levels(&permissions).is_ok());
+    }
+    
+    #[test]
+    fn test_semantic_sensitivity_levels_invalid() {
+        let permissions = vec![
+            PermissionSpecification {
+                resource_identifier: "user.governmentId".to_string(),
+                requested_action: Action::Write as i32,
+                sensitivity_level: SensitivityLevel::Critical as i32,
+                constraints: None, // Missing required constraints
+                justification: "".to_string(), // Missing required justification
+                delegation_chain: vec![],
+            }
+        ];
+        
+        assert!(validate_sensitivity_levels(&permissions).is_err());
+    }
+    
+    // --- Test Helpers ---
+    
+    fn create_test_payment_method() -> PaymentMethod {
+        PaymentMethod {
+            payment_type: "wallet".to_string(),
+            payment_identifier: "0x123456789abcdef".to_string(),
+            payment_details: None,
+        }
+    }
+    
+    fn create_test_trust_credential() -> TrustCredential {
+        TrustCredential {
+            credential_type: "ISO27001".to_string(),
+            issuer: "CertAuthority".to_string(),
+            credential_id: "CERT-123456".to_string(),
+            expiry: Some(future_prost_timestamp(365)), // 1 year in future
+            verification_url: "https://verify.example.com/CERT-123456".to_string(),
+        }
+    }
+    
+    fn create_test_constraints() -> google.protobuf.Struct {
+        let mut map = HashMap::new();
+        map.insert("max_frequency_per_hour".to_string(), Value::Number(10.into()));
+        map.insert("data_access_scope".to_string(), Value::String("anonymized".to_string()));
+        
+        prost_struct_from_hashmap(&map).unwrap()
     }
 } 

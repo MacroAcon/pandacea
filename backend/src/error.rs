@@ -71,6 +71,26 @@ pub enum MCPError {
     /// Error during type conversion (e.g., timestamp, struct).
     #[error("Type conversion error: {message}")]
     ConversionError { message: String },
+    /// Error related to Consent Genome operations.
+    #[error("Consent Genome error: {context} - {source}")]
+    GenomeError {
+        context: String,
+        #[source] source: Box<dyn std::error::Error + Send + Sync + 'static>
+    },
+    /// Error related to Audit Log operations.
+    #[error("Audit Log error: {context} - {source}")]
+    AuditError {
+        context: String,
+        #[source] source: Box<dyn std::error::Error + Send + Sync + 'static>
+    },
+    /// Error during communication between agents
+    #[error("Communication error: {context} - {source}")]
+    CommunicationError {
+        /// Context about what operation was being attempted
+        context: String,
+        /// The underlying error that occurred
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 /// A specialized `Result` type for MCP operations, using [`MCPError`](crate::error::MCPError).
@@ -158,5 +178,13 @@ impl MCPError {
     
     pub fn expired_purpose_without_timestamp() -> Self {
         MCPError::ConversionError { message: "Purpose is marked as expired but no expiry timestamp provided".into() }
+    }
+    
+    pub fn genome_error(context: impl Into<String>, source: impl Into<Box<dyn std::error::Error + Send + Sync + 'static>>) -> Self {
+        MCPError::GenomeError { context: context.into(), source: source.into() }
+    }
+    
+    pub fn audit_error(context: impl Into<String>, source: impl Into<Box<dyn std::error::Error + Send + Sync + 'static>>) -> Self {
+        MCPError::AuditError { context: context.into(), source: source.into() }
     }
 } 

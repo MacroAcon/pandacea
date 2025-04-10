@@ -1,7 +1,7 @@
 //! Utility functions for timestamp conversions, Struct conversions, and expiration checks.
 
 use crate::error::{Result, MCPError}; // Import Result and Error
-use crate::types::{McpRequest, PurposeDna}; // Import types used in functions
+use crate::types::{McpRequest, PurposeDNA}; // Import types used in functions
 use chrono::{DateTime, Utc};
 use prost_types::{Timestamp, Struct, Value as ProstValue, value::Kind as ProstKind, ListValue};
 use serde_json::{Value as SerdeValue, Map as SerdeMap};
@@ -32,20 +32,47 @@ pub fn chrono_from_prost_timestamp(ts: &Timestamp) -> Option<DateTime<Utc>> {
 
 // --- Expiration Checks ---
 
-/// Checks if an [`McpRequest`] has expired based on its `request_expiry` field.
-/// Returns `true` if expired or if `request_expiry` is missing or invalid.
+/// Checks if an [`McpRequest`] has expired based on its expiration fields.
+/// Returns `true` if expired or if expiration is missing or invalid.
 pub fn is_request_expired(request: &McpRequest) -> bool {
-    request.request_expiry.as_ref()
+    // Try to get the timestamp from either field in the oneof
+    let expiry_timestamp = match &request.expiry_time {
+        Some(crate::mcp::mcp_request::ExpiryTime::Expiration(ts)) => Some(ts),
+        Some(crate::mcp::mcp_request::ExpiryTime::RequestExpiry(ts)) => Some(ts),
+        None => None,
+    };
+    
+    expiry_timestamp
         .and_then(chrono_from_prost_timestamp) // Convert to DateTime<Utc> if valid
         .map_or(false, |expiry_dt| expiry_dt <= Utc::now()) // Check if expiry time is past or equal to now
 }
 
-/// Checks if a [`PurposeDna`] has expired based on its `purpose_expiry_timestamp` field.
+/// Checks if a [`PurposeDNA`] has expired based on its `purpose_expiry_timestamp` field.
 /// Returns `true` if expired or if the timestamp is missing or invalid.
-pub fn is_purpose_expired(purpose: &PurposeDna) -> bool {
-     purpose.purpose_expiry_timestamp.as_ref()
+pub fn is_purpose_expired(purpose: &PurposeDNA) -> bool {
+    purpose.purpose_expiry_timestamp.as_ref()
         .and_then(chrono_from_prost_timestamp)
         .map_or(false, |expiry_dt| expiry_dt <= Utc::now())
+}
+
+/// Gets the request timestamp from the oneof fields in [`McpRequest`].
+/// Handles both timestamp and request_timestamp fields.
+pub fn get_request_timestamp(request: &McpRequest) -> Option<&Timestamp> {
+    match &request.request_time {
+        Some(crate::mcp::mcp_request::RequestTime::Timestamp(ts)) => Some(ts),
+        Some(crate::mcp::mcp_request::RequestTime::RequestTimestamp(ts)) => Some(ts),
+        None => None,
+    }
+}
+
+/// Gets the expiry timestamp from the oneof fields in [`McpRequest`].
+/// Handles both expiration and request_expiry fields.
+pub fn get_expiry_timestamp(request: &McpRequest) -> Option<&Timestamp> {
+    match &request.expiry_time {
+        Some(crate::mcp::mcp_request::ExpiryTime::Expiration(ts)) => Some(ts),
+        Some(crate::mcp::mcp_request::ExpiryTime::RequestExpiry(ts)) => Some(ts),
+        None => None,
+    }
 }
 
 // --- Struct <-> HashMap Conversions ---
@@ -165,7 +192,7 @@ mod tests {
     use super::*; // Import functions from this module
     use crate::builders::McpRequestBuilder; // For creating test data
     use crate::crypto::KeyPair; // For test identity
-    use crate::types::{RequestorIdentity, PurposeDna};
+    use crate::types::{RequestorIdentity, PurposeDNA};
     use chrono::{Duration, TimeZone};
     use prost_types::value::Kind;
     use serde_json::json;
@@ -209,7 +236,7 @@ mod tests {
          let identity = RequestorIdentity { 
              pseudonym_id: "exp-test".into(), public_key: kp.public_key_bytes().into(), ..Default::default()
          };
-         let purpose = PurposeDna { purpose_id: "exp-purp".into(), ..Default::default() };
+         let purpose = PurposeDNA { purpose_id: "exp-purp".into(), ..Default::default() };
          let mut builder = McpRequestBuilder::new(identity, purpose, "1.0".into());
          if let Some(exp) = expiry {
              builder = builder.set_expiry(exp);
@@ -217,8 +244,8 @@ mod tests {
          builder.build()
      }
      
-     fn create_test_purpose_with_expiry(expiry: Option<DateTime<Utc>>) -> PurposeDna {
-         PurposeDna { 
+     fn create_test_purpose_with_expiry(expiry: Option<DateTime<Utc>>) -> PurposeDNA {
+         PurposeDNA { 
              purpose_id: "exp-purp-dna".into(),
              purpose_expiry_timestamp: expiry.map(prost_timestamp_from_chrono),
               ..Default::default()

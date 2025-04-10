@@ -1,6 +1,6 @@
 use crate::error::{Result};
-use crate::types::McpRequest;
-use crate::crypto::verify_request_signature;
+use crate::types::{McpRequest, McpResponse};
+use crate::crypto::{verify_request_signature, verify_response_signature};
 
 /// Validates the security aspects of an [`McpRequest`], primarily its cryptographic signature.
 ///
@@ -17,6 +17,21 @@ pub fn validate_request_security(request: &McpRequest) -> Result<()> {
     verify_request_signature(request)
 }
 
+/// Validates the security aspects of an [`McpResponse`], primarily its cryptographic signature.
+///
+/// Relies on `crate::crypto::verify_response_signature`.
+///
+/// # Arguments
+/// * `response`: The [`McpResponse`] whose signature needs verification.
+///
+/// # Returns
+/// * `Ok(())` if the signature is valid and verified.
+/// * `Err(MCPError)` specific to signature validation failures (e.g., `MissingField`, `UnsupportedAlgorithm`, `InvalidSignature`).
+pub fn validate_response_security(response: &McpResponse) -> Result<()> {
+    // Delegate directly to the crypto utility function
+    verify_response_signature(response)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -26,10 +41,10 @@ mod tests {
     use crate::test_utils::test_utils::*; // Import shared helpers
     use bytes::Bytes;
 
-    // --- Security Validation Tests ---
+    // --- Request Security Validation Tests ---
 
     #[test]
-    fn test_security_valid_signature() {
+    fn test_security_valid_request_signature() {
         // Helper creates a request that should be valid syntactically and semantically
         let (_key_pair, request) = create_valid_signed_request_for_security_tests();
         assert!(validate_request_security(&request).is_ok());
@@ -127,4 +142,53 @@ mod tests {
          assert!(matches!(result.unwrap_err(), MCPError::UnsupportedAlgorithm(_)));
     }
 
+    // --- Response Security Validation Tests ---
+    
+    #[test]
+    fn test_security_valid_response_signature() {
+        let (key_pair, request) = create_valid_signed_request_for_security_tests();
+        let response = create_signed_response(
+            &key_pair,
+            &request,
+            McpResponse_Status::APPROVED,
+            None
+        );
+        
+        assert!(validate_response_security(&response).is_ok());
+    }
+    
+    #[test]
+    fn test_security_missing_response_signature() {
+        let (key_pair, request) = create_valid_signed_request_for_security_tests();
+        let mut response = create_signed_response(
+            &key_pair,
+            &request,
+            McpResponse_Status::APPROVED,
+            None
+        );
+        
+        response.signature = None; // Remove signature
+        
+        let result = validate_response_security(&response);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MCPError::MissingField { field } if field == "response.signature"));
+    }
+    
+    #[test]
+    fn test_security_tampered_response() {
+        let (key_pair, request) = create_valid_signed_request_for_security_tests();
+        let mut response = create_signed_response(
+            &key_pair,
+            &request,
+            McpResponse_Status::APPROVED,
+            None
+        );
+        
+        // Tamper with the response after signing
+        response.response_id = "tampered-response-id".to_string();
+        
+        let result = validate_response_security(&response);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MCPError::InvalidSignature));
+    }
 } 

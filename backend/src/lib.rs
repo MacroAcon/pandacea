@@ -25,6 +25,9 @@ mod builders;
 mod serialization;
 mod utils;
 mod sentinel; // Declare the new sentinel module
+mod consent_manager; // Declare the new consent manager module
+mod communication; // Declare the new communication module
+mod coordination; // Declare the new coordination module
 
 // Declare the new validation *directory* as a module
 pub mod validation;
@@ -41,6 +44,9 @@ pub use builders::*; // McpRequestBuilder, McpResponseBuilder
 pub use serialization::*; // serialize_request, deserialize_request, etc.
 pub use utils::*; // Timestamp/Struct conversions, expiration checks
 pub use sentinel::{SentinelAgent, SentinelConfig, SecurityAlert, AlertType, SensitivityLevel}; // Re-export Sentinel components
+pub use consent_manager::{ConsentManager, ConsentManagerConfig, ConsentRule, ConsentDecision, RequestorFilter, AuditLogEntry}; // Re-export Consent Manager components
+pub use communication::{MessageRouter, MessageRouterConfig, Endpoint, AgentType}; // Re-export Communication components
+pub use coordination::{CoordinationService, CoordinationServiceConfig}; // Re-export Coordination components
 
 // Add module declaration for test_utils (only compiled in test builds)
 #[cfg(test)]

@@ -51,6 +51,29 @@ npm install
 npm run build
 ```
 
+## Key Technologies
+
+### Model Context Protocol (MCP)
+
+MCP is the foundational protocol for Pandacea, enabling structured data requests with explicit purpose declarations, consent management, and compensation tracking. The protocol is defined in Protocol Buffers format and implements:
+
+1. **Robust Serialization**: Using Protocol Buffers for efficient, schema-evolving network transmission
+2. **Canonical Representation**: Deterministic CBOR encoding for cryptographic operations ensuring byte-for-byte consistency
+3. **Comprehensive Validation**: Multi-stage validation pipeline for syntax, semantics, and security
+
+See [MCP Specification](docs/mcp_specification.md) for more details.
+
+### Cryptographic Security
+
+The system implements strong cryptographic security using:
+
+- **EdDSA (Ed25519)** for digital signatures
+- **Deterministic serialization** for consistent cryptographic operations
+- **Key management** primitives with PKCS#8 compatibility
+- **Multi-level validation** for all cryptographic operations
+
+For more information on the serialization approach, see [Serialization Documentation](docs/serialization.md).
+
 ## Contributing
 
 Please see the [contributing guide](docs/contributing.md) for details on how to contribute to the project.
@@ -63,7 +86,7 @@ This project is licensed under the terms specified in [license.md](docs/license.
 
 Pandacea is an open framework for building consent-driven, ethically-compensated, and agent-aware data ecosystems that places privacy, consent, and reciprocity at the foundation of how data flows.
 
-For a comprehensive overview of Pandacea's vision, architecture, and technical specifications, please read our [Whitepaper](pandacea_whitepaper.md).
+For a comprehensive overview of Pandacea's vision, architecture, and technical specifications, please read our [Whitepaper](docs/pandacea_whitepaper.md).
 
 ## Vision
 
@@ -79,13 +102,13 @@ Your personal agent negotiates with AI systems on your behalf
 
 You get paid for sharing valuable, use-ready data, whether passively or through innovative tools you build
 
-New job titles like “Data Provider” and “Loop Creator” become real paths to income
+New job titles like "Data Provider" and "Loop Creator" become real paths to income
 
 Young people, raised as native AI builders, learn to generate useful data through custom agents and apps — and are rewarded from the start
 
 This is how we survive the transition, not by resisting AI, but by ensuring that the value it creates flows back to the people who power it.
 
-Pandacea is building the infrastructure to make that possible. We’re not just optimizing computation. We’re reimagining compensation.
+Pandacea is building the infrastructure to make that possible. We're not just optimizing computation. We're reimagining compensation.
 
 ## Core Architecture
 
@@ -101,11 +124,11 @@ Pandacea's architecture consists of five key components designed to enforce cons
 
 5. **Audit & Integrity Layer**: Each edge device maintains a tamper-aware local audit log to ensure verifiability across participants without exposing raw data.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical specifications.
+See [Architecture Documentation](docs/architecture.md) for detailed technical specifications.
 
 ## Current Status
 
-Pandacea is currently in the early development phase (Phase 0: Infrastructure Groundwork). We are establishing foundational elements, defining protocols, and building our community. See our [ROADMAP.md](ROADMAP.md) for development phases and milestones.
+Pandacea is currently in the early development phase (Phase 0: Infrastructure Groundwork). We are establishing foundational elements, defining protocols, and building our community. See our [Roadmap](docs/pandacea-roadmap%20(3).md) for development phases and milestones.
 
 ## Getting Started
 
@@ -132,26 +155,25 @@ npm run dev
 
 ### Examples
 
-<!-- Add examples as they become available -->
-Basic examples will be provided in the `examples/` directory as components are developed.
+Refer to [Serialization Examples](docs/serialization_example.md) for practical examples of using the MCP serialization system for request/response handling and cryptographic operations.
 
 ## Contributing
 
-We welcome contributions from developers, designers, researchers, ethicists, and anyone passionate about creating ethical data ecosystems. See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to contribute.
+We welcome contributions from developers, designers, researchers, ethicists, and anyone passionate about creating ethical data ecosystems. See [Contributing Guide](docs/contributing.md) for detailed guidelines on how to contribute.
 
 ## Governance & Participation
 
 Pandacea practices progressive decentralization, starting with structured initial stewardship and transitioning to community control over time. Governance influence is earned through contributions to the Access Commons. Working Groups manage specific governance areas with open proposals and transparent decision-making.
 
-Learn more about our governance model in the [GOVERNANCE.md](GOVERNANCE.md) document.
+Learn more about our governance model in the [Governance Documentation](docs/governance.md) document.
 
 ## Code of Conduct
 
-We are committed to providing a welcoming and inclusive environment. All participants are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
+We are committed to providing a welcoming and inclusive environment. All participants are expected to adhere to our [Code of Conduct](docs/code_of_conduct.md).
 
 ## License
 
-This project is licensed under the [AGPL-3.0](LICENSE.md) license - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the [AGPL-3.0](LICENSE) license - see the [License](docs/license.md) file for details.
 
 ## Contact
 
